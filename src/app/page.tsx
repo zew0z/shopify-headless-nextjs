@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getProducts, getCollections, isShopifyConfigured } from "@/lib/shopify";
+import { getProducts, getCollections, isShopifyConfigured, shopifyConfig } from "@/lib/shopify";
 import { MOCK_PRODUCTS } from "@/lib/shopify/mock-data";
 import { ProductCard } from "@/components/ProductCard";
 import { ArrowRight, Sparkles, CheckCircle2, PackagePlus } from "lucide-react";
@@ -12,6 +12,7 @@ export default async function HomePage() {
 
   const hasLiveProducts = liveProducts.length > 0;
   const displayProducts = hasLiveProducts ? liveProducts : MOCK_PRODUCTS;
+  const storeDomain = shopifyConfig.domain || "Shopify Store";
 
   return (
     <div className="flex flex-col gap-16 pb-20">
@@ -24,14 +25,14 @@ export default async function HomePage() {
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
             </span>
             <span>
-              Connected to <strong>My Store 2</strong> ({process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN}) via Storefront API
+              Connected to <strong>{storeDomain}</strong> via Storefront API
             </span>
           </div>
 
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-200/80 dark:bg-emerald-900/60 px-3 py-1 text-xs font-semibold text-emerald-900 dark:text-emerald-100">
               <CheckCircle2 className="h-3.5 w-3.5" />
-              API Verified
+              API Ready
             </span>
           </div>
         </div>
@@ -71,7 +72,7 @@ export default async function HomePage() {
                   href="#shopify-admin-guide"
                   className="flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-6 py-3.5 text-sm font-semibold text-white hover:bg-white/10 transition-colors backdrop-blur-xs"
                 >
-                  <span>Add Products in Shopify</span>
+                  <span>Integration Guide</span>
                 </a>
               </div>
             </div>
@@ -89,21 +90,21 @@ export default async function HomePage() {
               </div>
               <div>
                 <h3 className="font-semibold text-sky-950 dark:text-sky-200 text-base">
-                  Your Shopify store has 0 published products
+                  Catalog Fallback Active
                 </h3>
                 <p className="text-xs sm:text-sm text-sky-800 dark:text-sky-300 mt-1">
-                  We are showing sample demo items below so your storefront remains fully testable. As soon as you create an active product in your Shopify Admin, it will instantly appear right here!
+                  Sample demo items are active below so your storefront remains fully testable. Connect your Shopify credentials in <code>.env.local</code> and published items will appear automatically!
                 </p>
               </div>
             </div>
 
             <a
-              href="https://admin.shopify.com/store/5bk7s8-pn/products/new"
+              href="https://admin.shopify.com/"
               target="_blank"
               rel="noopener noreferrer"
               className="flex-shrink-0 inline-flex items-center gap-2 rounded-xl bg-sky-900 dark:bg-sky-100 dark:text-sky-950 text-white px-4 py-2.5 text-xs font-semibold hover:bg-sky-800 transition-colors shadow-sm"
             >
-              <span>Create Product in Shopify</span>
+              <span>Open Shopify Admin</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </a>
           </div>
@@ -183,27 +184,27 @@ export default async function HomePage() {
               ✓
             </span>
             <h3 className="text-xl font-bold text-neutral-900 dark:text-white">
-              Shopify Connection Successful!
+              Shopify Connection Guide
             </h3>
           </div>
           <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-2xl leading-relaxed">
-            Your Next.js storefront is now authenticated with <strong>My Store 2</strong>. Here is how to add your products and publish them to your headless storefront:
+            Follow these steps to connect any Shopify store and publish products directly to this storefront:
           </p>
 
           <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
             <div className="rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 p-6 border border-neutral-200/60 dark:border-neutral-700/60">
               <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-2">STEP 1</div>
-              <h4 className="font-semibold text-sm text-neutral-900 dark:text-white">Go to Products</h4>
+              <h4 className="font-semibold text-sm text-neutral-900 dark:text-white">Configure .env.local</h4>
               <p className="mt-2 text-xs text-neutral-500 leading-relaxed">
-                In your Shopify Admin left menu, click <strong>Προϊόντα (Products)</strong> &rarr; <strong>Προσθήκη προϊόντος (Add product)</strong>.
+                Add your store domain and Storefront public access token to <code>.env.local</code>.
               </p>
             </div>
 
             <div className="rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 p-6 border border-neutral-200/60 dark:border-neutral-700/60">
               <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-2">STEP 2</div>
-              <h4 className="font-semibold text-sm text-neutral-900 dark:text-white">Set Title, Price & Image</h4>
+              <h4 className="font-semibold text-sm text-neutral-900 dark:text-white">Add Products</h4>
               <p className="mt-2 text-xs text-neutral-500 leading-relaxed">
-                Add a title, upload a photo, set a price, and set Status to <strong>Active (Ενεργό)</strong>.
+                In Shopify Admin, go to <strong>Products</strong> &rarr; <strong>Add product</strong>. Set price and upload photos.
               </p>
             </div>
 
@@ -211,7 +212,7 @@ export default async function HomePage() {
               <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mb-2">STEP 3</div>
               <h4 className="font-semibold text-sm text-neutral-900 dark:text-white">Publish to Sales Channels</h4>
               <p className="mt-2 text-xs text-neutral-500 leading-relaxed">
-                Under <strong>Sales channels (Κανάλια πωλήσεων)</strong> on the right sidebar, make sure your app / Headless channel is checked!
+                Under <strong>Sales channels</strong> on the product page, ensure your Headless app channel is active.
               </p>
             </div>
           </div>
