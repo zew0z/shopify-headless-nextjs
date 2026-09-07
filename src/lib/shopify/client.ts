@@ -1,22 +1,23 @@
 /**
- * Robust Shopify Storefront API Fetch Client
+ * Shopify Storefront GraphQL Client
  *
- * Features:
- * - Automatic exponential backoff & retries for HTTP 429 (Rate Limits) and 503 (Temporary Unavailable).
- * - Automatic token selection (Private Storefront Token for SSR / Public for client fallback).
- * - Forwarding of client's real IP via `Shopify-Storefront-Buyer-IP` to prevent server-side IP throttling.
- * - Next.js tag-based on-demand ISR revalidation support (`next: { tags, revalidate }`).
- * - Detailed error handling with GraphQL userErrors and network logging.
+ * Universal, dependency-free GraphQL client featuring:
+ * - Automatic exponential backoff retry on HTTP 429 (Rate Limits) and HTTP 503
+ * - Shopify-Storefront-Buyer-IP forwarding from x-forwarded-for headers (protects SSR servers)
+ * - Support for both public and private Storefront API tokens
+ * - Configurable request abort timeouts
+ * - Next.js App Router cache tag integration
  */
 
+import { headers } from "next/headers";
 import { shopifyConfig, isShopifyConfigured } from "./config";
-import { ShopifyResponse } from "./types";
+import { ShopifyResponse, ShopifyGraphQLError } from "./types";
 
 export class ShopifyError extends Error {
-  status: number;
-  errors?: unknown[];
+  public status: number;
+  public errors?: ShopifyGraphQLError[];
 
-  constructor(message: string, status = 500, errors?: unknown[]) {
+  constructor(message: string, status: number = 500, errors?: ShopifyGraphQLError[]) {
     super(message);
     this.name = "ShopifyError";
     this.status = status;
@@ -24,139 +25,173 @@ export class ShopifyError extends Error {
   }
 }
 
-/**
- * Safely extracts client IP address when running inside Next.js server context.
- */
-async function getBuyerIp(): Promise<string | undefined> {
-  if (typeof window !== "undefined") return undefined;
-
-  try {
-    const { headers } = await import("next/headers");
-    const headerList = await headers();
-    const forwardedFor = headerList.get("x-forwarded-for");
-    if (forwardedFor) {
-      return forwardedFor.split(",")[0].trim();
-    }
-    return headerList.get("x-real-ip") || undefined;
-  } catch {
-    // Silently continue if invoked outside Next.js request context (e.g. build time)
-    return undefined;
-  }
-}
-
-interface ShopifyFetchParams {
+interface ShopifyFetchOptions {
   query: string;
   variables?: Record<string, unknown>;
   cache?: RequestCache;
   tags?: string[];
   revalidate?: number | false;
-  retryCount?: number;
+  retries?: number;
+  buyerIp?: string;
 }
 
 /**
- * Universal Storefront API fetcher with retry & error recovery
+ * Universal fetch wrapper for Shopify Storefront GraphQL API.
  */
 export async function shopifyFetch<T>({
   query,
-  variables = {},
+  variables,
   cache = "no-store",
   tags,
   revalidate,
-  retryCount = 0,
-}: ShopifyFetchParams): Promise<{ status: number; body: ShopifyResponse<T> }> {
+  retries = shopifyConfig.maxRetries,
+  buyerIp,
+}: ShopifyFetchOptions): Promise<{ status: number; body: ShopifyResponse<T> }> {
   if (!isShopifyConfigured) {
-    throw new ShopifyError("Shopify credentials not properly configured in environment.", 400);
+    throw new ShopifyError(
+      "Shopify is not configured. Please set NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN and access token in .env.local",
+      500
+    );
   }
 
   const endpoint = `https://${shopifyConfig.domain}/api/${shopifyConfig.apiVersion}/graphql.json`;
 
-  // Build Request Headers
-  const requestHeaders: Record<string, string> = {
+  // Build headers
+  const reqHeaders: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
   };
 
-  // Attach appropriate token
+  // Determine authentication method
   if (shopifyConfig.privateAccessToken) {
-    requestHeaders["Shopify-Storefront-Private-Token"] = shopifyConfig.privateAccessToken;
-    const buyerIp = await getBuyerIp();
-    if (buyerIp) {
-      requestHeaders["Shopify-Storefront-Buyer-IP"] = buyerIp;
-    }
+    reqHeaders["Shopify-Storefront-Private-Token"] = shopifyConfig.privateAccessToken;
   } else {
-    requestHeaders["X-Shopify-Storefront-Access-Token"] = shopifyConfig.publicAccessToken;
+    reqHeaders["X-Shopify-Storefront-Access-Token"] = shopifyConfig.publicAccessToken;
+  }
+
+  // Forward client Buyer IP to prevent SSR server throttling
+  let clientIp = buyerIp;
+  if (!clientIp) {
+    try {
+      const headerList = await headers();
+      const forwardedFor = headerList.get("x-forwarded-for");
+      if (forwardedFor) {
+        clientIp = forwardedFor.split(",")[0].trim();
+      } else {
+        clientIp = headerList.get("x-real-ip") || undefined;
+      }
+    } catch {
+      // In non-request contexts (e.g. background tasks or static generation), headers() throws
+    }
+  }
+
+  if (clientIp) {
+    reqHeaders["Shopify-Storefront-Buyer-IP"] = clientIp;
   }
 
   // Next.js caching configuration
-  const nextConfig: { tags?: string[]; revalidate?: number | false } = {};
-  if (tags && tags.length > 0) nextConfig.tags = tags;
-  if (typeof revalidate !== "undefined") nextConfig.revalidate = revalidate;
+  const nextOptions: { tags?: string[]; revalidate?: number | false } = {};
+  if (tags && tags.length > 0) nextOptions.tags = tags;
+  if (typeof revalidate === "number" || revalidate === false) {
+    nextOptions.revalidate = revalidate;
+  }
 
-  try {
+  const fetchInit: RequestInit = {
+    method: "POST",
+    headers: reqHeaders,
+    body: JSON.stringify({ query, variables }),
+    cache,
+    ...(Object.keys(nextOptions).length > 0 ? { next: nextOptions } : {}),
+  };
+
+  // Execute request with timeout and exponential backoff retry loop
+  let attempt = 0;
+  while (attempt <= retries) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), shopifyConfig.timeoutMs);
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: requestHeaders,
-      body: JSON.stringify({ query, variables }),
-      cache,
-      next: Object.keys(nextConfig).length > 0 ? nextConfig : undefined,
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    // Rate Limit (429) or Server Unavailable (503) Retry Handling
-    if ((response.status === 429 || response.status === 503) && retryCount < shopifyConfig.maxRetries) {
-      const delay = shopifyConfig.retryDelayMs * Math.pow(2, retryCount);
-      console.warn(
-        `[Shopify] Rate limited (${response.status}). Retrying in ${delay}ms (Attempt ${retryCount + 1}/${shopifyConfig.maxRetries})...`
-      );
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      return shopifyFetch<T>({
-        query,
-        variables,
-        cache,
-        tags,
-        revalidate,
-        retryCount: retryCount + 1,
+    try {
+      const res = await fetch(endpoint, {
+        ...fetchInit,
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
+
+      // Handle rate limiting (429) or transient gateway errors (503)
+      if (res.status === 429 || res.status === 503) {
+        if (attempt < retries) {
+          // Check for Retry-After header or compute exponential jittered backoff
+          const retryAfterHeader = res.headers.get("Retry-After");
+          const retryAfterMs = retryAfterHeader
+            ? parseInt(retryAfterHeader, 10) * 1000
+            : shopifyConfig.retryDelayMs * Math.pow(2, attempt) + Math.random() * 200;
+
+          console.warn(
+            `[Shopify SDK] Rate limited (${res.status}). Retrying attempt ${attempt + 1}/${retries} in ${Math.round(retryAfterMs)}ms...`
+          );
+
+          await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+          attempt++;
+          continue;
+        }
+      }
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new ShopifyError(
+          `Shopify HTTP ${res.status}: ${errorText}`,
+          res.status
+        );
+      }
+
+      const body: ShopifyResponse<T> = await res.json();
+
+      // Check for throttled code inside GraphQL errors
+      if (body.errors && body.errors.length > 0) {
+        const isThrottled = body.errors.some(
+          (e) => e.extensions?.code === "THROTTLED" || e.message?.toLowerCase().includes("throttled")
+        );
+
+        if (isThrottled && attempt < retries) {
+          const delayMs = shopifyConfig.retryDelayMs * Math.pow(2, attempt) + Math.random() * 200;
+          console.warn(
+            `[Shopify SDK] GraphQL THROTTLED error. Retrying attempt ${attempt + 1}/${retries} in ${Math.round(delayMs)}ms...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          attempt++;
+          continue;
+        }
+
+        const msg = body.errors.map((e) => e.message).join(", ");
+        throw new ShopifyError(`Shopify GraphQL Error: ${msg}`, 400, body.errors);
+      }
+
+      return { status: res.status, body };
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
+
+      // Retry on network abort or transient fetch errors
+      if (attempt < retries) {
+        const isAbort = (err as Error)?.name === "AbortError";
+        const isNetworkErr = (err as Error)?.message?.includes("fetch failed");
+
+        if (isAbort || isNetworkErr) {
+          const delayMs = shopifyConfig.retryDelayMs * Math.pow(2, attempt);
+          console.warn(
+            `[Shopify SDK] Network/timeout retry (${attempt + 1}/${retries}) in ${delayMs}ms:`,
+            (err as Error).message
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          attempt++;
+          continue;
+        }
+      }
+
+      if (err instanceof ShopifyError) throw err;
+      throw new ShopifyError((err as Error).message || "Unknown network error", 500);
     }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new ShopifyError(
-        `Shopify HTTP ${response.status}: ${errorText || response.statusText}`,
-        response.status
-      );
-    }
-
-    const body: ShopifyResponse<T> = await response.json();
-
-    if (body.errors && body.errors.length > 0) {
-      const primaryMessage = body.errors[0]?.message || "GraphQL Execution Error";
-      console.error("[Shopify GraphQL Errors]:", body.errors);
-      throw new ShopifyError(primaryMessage, 400, body.errors);
-    }
-
-    return {
-      status: response.status,
-      body,
-    };
-  } catch (error: unknown) {
-    if (error instanceof ShopifyError) {
-      throw error;
-    }
-
-    // Abort timeout
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new ShopifyError(`Shopify request timed out after ${shopifyConfig.timeoutMs}ms`, 408);
-    }
-
-    throw new ShopifyError(
-      error instanceof Error ? error.message : "Unknown network failure querying Shopify",
-      500
-    );
   }
+
+  throw new ShopifyError(`Request failed after ${retries} retries`, 429);
 }
