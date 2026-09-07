@@ -285,3 +285,31 @@ export interface ShopifyResponse<T> {
     };
   };
 }
+
+// -------------------------------------------------------------
+// Store Metadata & Diagnostics
+// -------------------------------------------------------------
+
+export interface ShopInfo {
+  name: string;
+  description: string;
+  primaryDomain: {
+    url: string;
+    host: string;
+  };
+  paymentSettings: {
+    currencyCode: string;
+    acceptedCardBrands: string[];
+  };
+}
+
+export interface ConnectionHealthCheck {
+  isConfigured: boolean;
+  canConnect: boolean;
+  domain: string;
+  apiVersion: string;
+  shopName?: string;
+  currency?: string;
+  latencyMs?: number;
+  errors?: string[];
+}

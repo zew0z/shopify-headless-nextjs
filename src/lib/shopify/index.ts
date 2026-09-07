@@ -17,8 +17,11 @@ import {
   GetCollectionProductsOptions,
   PredictiveSearchResult,
   CartUserError,
+  ShopInfo,
+  ConnectionHealthCheck,
 } from "./types";
 import {
+  shopQuery,
   getProductsQuery,
   getProductByHandleQuery,
   getProductRecommendationsQuery,
@@ -46,6 +49,83 @@ export * from "./config";
 export * from "./client";
 export * from "./queries";
 export * from "./mutations";
+
+// -------------------------------------------------------------
+// Connection & Health Operations
+// -------------------------------------------------------------
+
+/**
+ * Retrieves basic store metadata (name, currency, primary domain).
+ */
+export async function getShopInfo(): Promise<ShopInfo | null> {
+  if (!isShopifyConfigured) return null;
+
+  try {
+    const res = await shopifyFetch<{ shop: ShopInfo }>({
+      query: shopQuery,
+      cache: "no-store",
+    });
+    return res.body.data?.shop || null;
+  } catch (err) {
+    console.warn("[Shopify SDK] getShopInfo error:", err);
+    return null;
+  }
+}
+
+/**
+ * Executes a full live diagnostic check of the Shopify Storefront API connection.
+ * Tests configuration, authentication, domain resolution, and network latency.
+ */
+export async function checkShopifyConnection(): Promise<ConnectionHealthCheck> {
+  const configValidation = validateShopifyConfig();
+  const baseResult: ConnectionHealthCheck = {
+    isConfigured: isShopifyConfigured,
+    canConnect: false,
+    domain: shopifyConfig.domain,
+    apiVersion: shopifyConfig.apiVersion,
+    errors: configValidation.issues,
+  };
+
+  if (!isShopifyConfigured) {
+    return baseResult;
+  }
+
+  const startTime = Date.now();
+  try {
+    const res = await shopifyFetch<{ shop: ShopInfo }>({
+      query: shopQuery,
+      cache: "no-store",
+    });
+
+    const latencyMs = Date.now() - startTime;
+    const shop = res.body.data?.shop;
+
+    if (shop) {
+      return {
+        isConfigured: true,
+        canConnect: true,
+        domain: shopifyConfig.domain,
+        apiVersion: shopifyConfig.apiVersion,
+        shopName: shop.name,
+        currency: shop.paymentSettings?.currencyCode,
+        latencyMs,
+      };
+    }
+
+    return {
+      ...baseResult,
+      errors: ["Response received from Shopify but shop metadata was missing"],
+    };
+  } catch (err) {
+    const latencyMs = Date.now() - startTime;
+    const message = err instanceof Error ? err.message : "Unknown connection failure";
+    return {
+      ...baseResult,
+      latencyMs,
+      errors: [message],
+    };
+  }
+}
 
 // -------------------------------------------------------------
 // Product Operations

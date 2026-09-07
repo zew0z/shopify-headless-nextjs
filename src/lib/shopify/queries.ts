@@ -1,10 +1,27 @@
 /**
- * Optimized Shopify Storefront GraphQL Queries & Fragments
+ * Shopify Storefront GraphQL Queries & Fragments
  */
 
 // -------------------------------------------------------------
 // Shared Fragments
 // -------------------------------------------------------------
+
+export const shopQuery = /* GraphQL */ `
+  query GetShopInfo {
+    shop {
+      name
+      description
+      primaryDomain {
+        url
+        host
+      }
+      paymentSettings {
+        currencyCode
+        acceptedCardBrands
+      }
+    }
+  }
+`;
 
 export const imageFragment = /* GraphQL */ `
   fragment ImageFragment on Image {
