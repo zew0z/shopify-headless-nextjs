@@ -1,5 +1,5 @@
 /**
- * Complete Shopify Storefront GraphQL Mutations
+ * Shopify Storefront GraphQL Mutations
  */
 
 import { cartFragment } from "./queries";
@@ -71,6 +71,38 @@ export const removeFromCartMutation = /* GraphQL */ `
 export const updateCartDiscountCodesMutation = /* GraphQL */ `
   mutation UpdateCartDiscountCodes($cartId: ID!, $discountCodes: [String!]) {
     cartDiscountCodesUpdate(cartId: $cartId, discountCodes: $discountCodes) {
+      cart {
+        ...CartFragment
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+  ${cartFragment}
+`;
+
+export const addCartGiftCardCodesMutation = /* GraphQL */ `
+  mutation AddCartGiftCardCodes($cartId: ID!, $giftCardCodes: [String!]!) {
+    cartGiftCardCodesAdd(cartId: $cartId, giftCardCodes: $giftCardCodes) {
+      cart {
+        ...CartFragment
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+  ${cartFragment}
+`;
+
+export const removeCartGiftCardCodesMutation = /* GraphQL */ `
+  mutation RemoveCartGiftCardCodes($cartId: ID!, $giftCardCodes: [String!]!) {
+    cartGiftCardCodesRemove(cartId: $cartId, giftCardCodes: $giftCardCodes) {
       cart {
         ...CartFragment
       }

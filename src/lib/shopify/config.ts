@@ -7,14 +7,20 @@
 
 function sanitizeDomain(domain?: string): string {
   if (!domain) return "";
-  return domain
+  let clean = domain
     .replace(/^https?:\/\//, "") // Remove protocol if present
     .replace(/\/+$/, "")        // Remove trailing slashes
     .trim();
+
+  // If user provided just store handle (e.g. 'my-cool-store'), auto-append .myshopify.com
+  if (clean && !clean.includes(".")) {
+    clean = `${clean}.myshopify.com`;
+  }
+  return clean;
 }
 
-const rawDomain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN;
-const rawPublicToken = process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN;
+const rawDomain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || process.env.SHOPIFY_STORE_DOMAIN;
+const rawPublicToken = process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN || process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN;
 const rawPrivateToken = process.env.SHOPIFY_STOREFRONT_PRIVATE_TOKEN;
 const rawApiVersion = process.env.SHOPIFY_STOREFRONT_API_VERSION || "2025-01";
 const rawWebhookSecret = process.env.SHOPIFY_WEBHOOK_SECRET;
@@ -64,8 +70,8 @@ export function validateShopifyConfig(): { isValid: boolean; issues: string[] } 
 
   if (!shopifyConfig.domain) {
     issues.push("NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN is missing");
-  } else if (!shopifyConfig.domain.includes(".myshopify.com")) {
-    issues.push("NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN must end with .myshopify.com");
+  } else if (!shopifyConfig.domain.includes(".myshopify.com") && !shopifyConfig.domain.includes(".")) {
+    issues.push("NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN must be a valid myshopify domain");
   }
 
   if (!shopifyConfig.publicAccessToken && !shopifyConfig.privateAccessToken) {

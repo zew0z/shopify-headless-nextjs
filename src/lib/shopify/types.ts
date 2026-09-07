@@ -48,6 +48,18 @@ export interface ProductOption {
   values: string[];
 }
 
+export interface SellingPlanAllocation {
+  sellingPlan: {
+    id: string;
+    name: string;
+    description?: string | null;
+  };
+  priceAdjustments: Array<{
+    price: Money;
+    compareAtPrice?: Money | null;
+  }>;
+}
+
 export interface ProductVariant {
   id: string;
   title: string;
@@ -58,6 +70,7 @@ export interface ProductVariant {
   image?: ShopifyImage | null;
   sku?: string | null;
   quantityAvailable?: number | null;
+  sellingPlanAllocations?: Connection<SellingPlanAllocation>;
 }
 
 export interface PriceRange {
@@ -160,7 +173,7 @@ export interface GetCollectionProductsOptions {
 }
 
 // -------------------------------------------------------------
-// Cart & Checkout (2025 Standard)
+// Cart, Gift Cards & Checkout (2025 Standard)
 // -------------------------------------------------------------
 
 export interface CartLineMerchandise {
@@ -186,6 +199,7 @@ export interface CartLine {
   quantity: number;
   cost: CartLineCost;
   merchandise: CartLineMerchandise;
+  sellingPlanAllocation?: SellingPlanAllocation | null;
 }
 
 export interface CartCost {
@@ -198,6 +212,12 @@ export interface CartCost {
 export interface CartDiscountCode {
   code: string;
   applicable: boolean;
+}
+
+export interface AppliedGiftCard {
+  lastCharacters: string;
+  amountUsed: Money;
+  balance: Money;
 }
 
 export interface CartBuyerIdentity {
@@ -214,17 +234,20 @@ export interface Cart {
   cost: CartCost;
   lines: Connection<CartLine>;
   discountCodes?: CartDiscountCode[];
+  appliedGiftCards?: AppliedGiftCard[];
   buyerIdentity?: CartBuyerIdentity;
 }
 
 export interface CartItemInput {
   merchandiseId: string;
   quantity: number;
+  sellingPlanId?: string;
 }
 
 export interface CartLineUpdateInput {
   id: string;
   quantity: number;
+  sellingPlanId?: string;
 }
 
 export interface CartUserError {

@@ -1,155 +1,146 @@
-# Headless Shopify Next.js SDK & Starter Architecture
+# Shopify Headless Next.js Backend SDK & Integration Architecture
 
 [![Next.js](https://img.shields.io/badge/Next.js-15%20%2F%2016-black?style=flat&logo=next.js)](https://nextjs.org/)
 [![Shopify](https://img.shields.io/badge/Shopify%20Storefront%20API-2025--01-green?style=flat&logo=shopify)](https://shopify.dev/docs/api/storefront)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-v4-38bdf8?style=flat&logo=tailwindcss)](https://tailwindcss.com/)
 
-A modular, production-tested **Shopify Storefront backend SDK** and Next.js starter template. Built to connect any custom React / Next.js frontend to Shopify with zero boilerplate, full type-safety, automatic rate-limit protection, and direct PCI-compliant checkout redirection.
-
----
-
-## Features
-
-- **Storefront API 2025-01 Ready**: Native GraphQL client built with pure `fetch` (zero heavy external Shopify packages).
-- **Universal Cart Management**: Complete server & client workflows for cart creation, line updates, removals, discount codes, and buyer identity.
-- **Hosted Checkout Redirection**: Converts cart sessions directly into Shopify hosted checkout URLs (`https://<store>.myshopify.com/cart/c/...`).
-- **429 & Rate-Limit Shield**: Built-in exponential backoff retries and client IP forwarding (`Shopify-Storefront-Buyer-IP`) to prevent serverless IP throttling on Vercel / AWS.
-- **Predictive Type-Ahead Search**: Native query support for real-time suggestions across products, collections, and search phrases.
-- **On-Demand Cache Invalidation (ISR)**: `/api/revalidate` webhook route with Shopify HMAC-SHA256 signature verification to purge Next.js cache tags when products change in Shopify.
-- **Offline / Mock Fallback**: Includes realistic mock catalog data so the frontend remains interactive even before Shopify credentials are provided.
+A production-grade, modular **Shopify Storefront Backend SDK** engineered for Next.js (App Router & SSR). Designed as a drop-in integration layer to connect any custom frontend to Shopify's modern GraphQL API with zero lock-in and zero external Shopify runtime dependencies.
 
 ---
 
-## Architecture Flow
+## 🏗 Architecture & Design Goals
 
 ```mermaid
-flowchart LR
-    A[Next.js App Router\nRSC + Client UI] -->|Storefront GraphQL| B[Shopify Backend]
-    B -->|Products, Variants, Collections| A
-    A -->|cartCreate / cartLinesAdd| B
-    B -->|PCI-Compliant checkoutUrl| C[Shopify Hosted Checkout\nCards, Apple Pay, PayPal, Shop Pay]
-    C -->|Order Confirmation| D[Shopify Fulfillment]
+flowchart TD
+    subgraph Client ["Custom Frontend / Client Components"]
+        UI[Custom Next.js / React UI]
+        API_PROXY["/api/cart Proxy"]
+    end
+
+    subgraph Backend_SDK ["src/lib/shopify (Universal SDK)"]
+        CLIENT["client.ts\n• Exp Backoff (429 Retries)\n• Buyer IP Forwarding\n• Timeout Abort"]
+        SDK["index.ts\nCatalog • Cart • Gift Cards • Subscriptions"]
+        QUERIES["queries.ts & mutations.ts\nGraphQL Storefront API 2025-01"]
+    end
+
+    subgraph Shopify_Cloud ["Shopify Infrastructure"]
+        STOREFRONT["Storefront GraphQL API"]
+        CHECKOUT["Shopify Hosted Checkout\n(PCI-DSS Tier 1)"]
+        WEBHOOKS["Admin Event Webhooks"]
+    end
+
+    UI --> API_PROXY
+    API_PROXY --> SDK
+    SDK --> CLIENT
+    CLIENT -->|POST GraphQL| STOREFRONT
+    STOREFRONT -->|checkoutUrl| CHECKOUT
+    WEBHOOKS -->|HMAC Verified POST| REVALIDATE["/api/revalidate\n(Tag Cache Invalidation)"]
 ```
 
 ---
 
-## Project Structure
+## ⚡ Key Backend Capabilities
+
+1. **Storefront API 2025-01 Standard**:
+   - 100% compliant with the mandatory Cart API lifecycle (`cartCreate`, `cartLinesAdd`, `cartLinesUpdate`, `cartLinesRemove`).
+   - Deprecated `checkoutCreate` completely omitted in accordance with Shopify's platform deprecations.
+
+2. **Advanced Cart & Checkout Operations**:
+   - **Subscriptions & Selling Plans**: Support for `sellingPlanId` on cart lines with automatic `sellingPlanAllocation` breakdown.
+   - **Gift Cards**: Dedicated `addGiftCard()` and `removeGiftCard()` using Shopify's `cartGiftCardCodesAdd` mutation (tender management separate from discounts).
+   - **Promo / Discount Codes**: Full application and error feedback using `cartDiscountCodesUpdate`.
+   - **Buyer Identity & SSO**: Links logged-in customer OAuth tokens (`customerAccessToken`) directly into the cart session so stored payment methods and shipping addresses are pre-filled at checkout.
+
+3. **Rate-Limit & Edge Resilience**:
+   - **IP Forwarding**: Automatically forwards client IP (`Shopify-Storefront-Buyer-IP` via `x-forwarded-for`) to prevent serverless hosts (Vercel, AWS Lambda) from being rate-limited under a single shared IP.
+   - **Exponential Backoff**: Built-in 3-step automatic retry for `429 Too Many Requests` and `503 Service Unavailable`.
+
+4. **Predictive Search & Type-Ahead**:
+   - Query engine supporting Shopify's `predictiveSearch` GraphQL query for instant multi-resource suggestions (products, collections, search queries).
+
+5. **On-Demand Webhook Invalidation (ISR)**:
+   - Built-in `/api/revalidate` route supporting Shopify Admin webhooks (`products/update`, `collections/update`, etc.) with cryptographic **HMAC SHA-256 signature verification** to purge cache tags dynamically.
+
+---
+
+## 📁 SDK File Organization
+
+The entire reusable backend is isolated inside `src/lib/shopify/` and `src/app/api/`:
 
 ```
-├── .env.example                  # Environment template for quick setup
-├── SHOPIFY_INTEGRATION_GUIDE.md  # Comprehensive architectural handbook
-├── next.config.ts                # cdn.shopify.com image whitelisting
-└── src/
-    ├── app/
-    │   ├── api/
-    │   │   ├── cart/route.ts     # Proxy route for cart operations
-    │   │   └── revalidate/       # Webhook route for tag-based cache invalidation
-    │   ├── products/[handle]/    # Dynamic product detail page (PDP)
-    │   ├── layout.tsx            # Global layout with CartProvider
-    │   └── page.tsx              # Catalog homepage (PLP)
-    ├── components/
-    │   ├── CartDrawer.tsx        # Slide-over cart drawer & checkout trigger
-    │   ├── Header.tsx            # Navigation & reactive cart counter
-    │   ├── ProductCard.tsx       # Catalog product card with quick-add
-    │   └── ProductForm.tsx       # Variant picker (size, color) & Add to Bag
-    ├── context/
-    │   └── cart-context.tsx      # Cart React Context synced to localStorage
-    └── lib/
-        └── shopify/              # CORE REUSABLE BACKEND SDK
-            ├── client.ts         # shopifyFetch with retry & IP forwarding
-            ├── config.ts         # Environment validation & sanitization
-            ├── index.ts          # Master SDK entrypoint
-            ├── mock-data.ts      # Offline fallback fixtures
-            ├── mutations.ts      # GraphQL cart mutations
-            ├── queries.ts        # GraphQL catalog & search queries
-            └── types.ts          # Comprehensive TypeScript models
+src/
+├── app/api/
+│   ├── cart/route.ts           # Non-blocking cart proxy (CRUD, discount, gift cards)
+│   ├── revalidate/route.ts     # HMAC-verified webhook cache invalidator
+│   └── search/route.ts         # Predictive search endpoint
+└── lib/shopify/
+    ├── client.ts               # Resilient fetch client (rate limits, backoff, IP)
+    ├── config.ts               # Env validation, domain sanitization & fallbacks
+    ├── index.ts                # Master SDK exports
+    ├── mock-data.ts            # Realistic offline fixtures for dev environments
+    ├── mutations.ts            # Complete GraphQL cart & gift card mutations
+    ├── queries.ts              # Catalog, collections & predictive search queries
+    └── types.ts                # 100% strict TypeScript types for Storefront models
 ```
 
 ---
 
-## Quick Start
+## 🚀 Quick Setup
 
-### 1. Clone & Install
+### 1. Environment Configuration
 
-```bash
-git clone <your-repo-url>
-cd ShopifyTest
-pnpm install
-```
-
-### 2. Environment Variables
-
-Copy `.env.example` to `.env.local`:
-
-```bash
-cp .env.example .env.local
-```
-
-Fill in your store credentials:
+Create or update `.env.local`:
 
 ```env
+# Required: Shopify store domain and Storefront access token
 NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=your-store-name.myshopify.com
-NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=your_storefront_access_token
+NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=your_storefront_public_token
 SHOPIFY_STOREFRONT_API_VERSION=2025-01
+
+# Optional: Private token for SSR buyer-IP forwarding
+SHOPIFY_STOREFRONT_PRIVATE_TOKEN=
+
+# Optional: Webhook secret for HMAC cache revalidation
+SHOPIFY_WEBHOOK_SECRET=
 ```
 
-> **How to get these keys in 2 minutes:**
-> 1. In your Shopify Admin, install the official **Headless** sales channel.
-> 2. Click **Add storefront**.
-> 3. Copy the **Public access token** and your `.myshopify.com` domain.
-
-### 3. Run Development Server
-
-```bash
-pnpm dev --port 3001
-```
-
-Visit `http://localhost:3001` to view the store.
-
----
-
-## Using the Backend SDK in Any React / Next.js Project
-
-The entire backend is contained inside [`src/lib/shopify/`](src/lib/shopify/). You can copy that folder into any existing codebase and import any function directly:
+### 2. Using the SDK in Code
 
 ```typescript
 import {
   getProducts,
   getProduct,
-  getCollections,
   predictiveSearch,
   createCart,
   addToCart,
+  addGiftCard,
+  applyDiscountCode,
 } from "@/lib/shopify";
 
-// Fetch catalog items
-const products = await getProducts({ limit: 10, sortKey: "PRICE" });
+// 1. Fetch catalog
+const products = await getProducts({ limit: 12, sortKey: "PRICE" });
 
-// Single product with variants & images
+// 2. Fetch single product by handle
 const product = await getProduct("hermes-agent-md-files");
 
-// Real-time typeahead search
-const searchResults = await predictiveSearch("hermes");
-
-// Create cart & get checkout URL
+// 3. Create a cart session
 const cart = await createCart([
-  { merchandiseId: "gid://shopify/ProductVariant/123456", quantity: 1 },
+  { merchandiseId: "gid://shopify/ProductVariant/123456", quantity: 1 }
 ]);
-console.log(cart.checkoutUrl); // Direct link to Shopify Checkout
+
+// 4. Apply discount or gift cards
+const discountedCart = await applyDiscountCode(cart.id, ["PROMO10"]);
+const giftCardCart = await addGiftCard(cart.id, ["GIFT-CARD-XXXX"]);
+
+// 5. Direct customer to hosted checkout
+window.location.href = cart.checkoutUrl;
 ```
 
 ---
 
-## Webhooks & Instant Cache Purging
+## 📖 Complete Documentation
 
-Set up a webhook in Shopify Admin pointing to `https://your-domain.com/api/revalidate`:
-
-- **Events**: `products/update`, `products/delete`, `collections/update`
-- **Format**: JSON
-- **Header verification**: Add `SHOPIFY_WEBHOOK_SECRET` to `.env.local` to verify HMAC signatures with `crypto.timingSafeEqual`.
-
-When you edit a price or product in Shopify, Next.js clears the exact product tag cache on demand.
+See [`SHOPIFY_INTEGRATION_GUIDE.md`](./SHOPIFY_INTEGRATION_GUIDE.md) for full architectural specifications, error codes, webhook registration steps, and team deployment patterns.
 
 ---
 

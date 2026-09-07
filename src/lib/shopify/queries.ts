@@ -169,6 +169,13 @@ export const cartFragment = /* GraphQL */ `
               }
             }
           }
+          sellingPlanAllocation {
+            sellingPlan {
+              id
+              name
+              description
+            }
+          }
         }
       }
     }
@@ -176,10 +183,27 @@ export const cartFragment = /* GraphQL */ `
       code
       applicable
     }
+    appliedGiftCards {
+      lastCharacters
+      amountUsed {
+        amount
+        currencyCode
+      }
+      balance {
+        amount
+        currencyCode
+      }
+    }
     buyerIdentity {
       email
       phone
       countryCode
+      customer {
+        id
+        email
+        firstName
+        lastName
+      }
     }
   }
   ${imageFragment}

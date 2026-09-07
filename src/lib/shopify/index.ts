@@ -34,6 +34,8 @@ import {
   updateCartLinesMutation,
   removeFromCartMutation,
   updateCartDiscountCodesMutation,
+  addCartGiftCardCodesMutation,
+  removeCartGiftCardCodesMutation,
   updateCartBuyerIdentityMutation,
 } from "./mutations";
 import { MOCK_PRODUCTS, MOCK_COLLECTIONS } from "./mock-data";
@@ -324,6 +326,19 @@ function checkCartErrors(userErrors?: CartUserError[]) {
 }
 
 /**
+ * Normalizes Shopify checkout URLs to ensure clean checkout redirection
+ */
+function normalizeCheckoutUrl(rawUrl: string): string {
+  if (!rawUrl) return "";
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+/**
  * Creates a brand new cart with optional initial items and buyer identity.
  */
 export async function createCart(
@@ -344,7 +359,11 @@ export async function createCart(
   });
 
   checkCartErrors(res.body.data?.cartCreate.userErrors);
-  return res.body.data?.cartCreate.cart || null;
+  const cart = res.body.data?.cartCreate.cart || null;
+  if (cart) {
+    cart.checkoutUrl = normalizeCheckoutUrl(cart.checkoutUrl);
+  }
+  return cart;
 }
 
 /**
@@ -365,7 +384,7 @@ export async function getCart(cartId: string): Promise<Cart | null> {
 }
 
 /**
- * Adds line items to an existing cart.
+ * Adds line items to an existing cart (supports variants and subscription selling plans).
  */
 export async function addToCart(
   cartId: string,
@@ -389,7 +408,7 @@ export async function addToCart(
 }
 
 /**
- * Updates item quantities in an existing cart.
+ * Updates item quantities or selling plans in an existing cart.
  */
 export async function updateCartLines(
   cartId: string,
@@ -458,6 +477,54 @@ export async function applyDiscountCode(
 
   checkCartErrors(res.body.data?.cartDiscountCodesUpdate.userErrors);
   return res.body.data?.cartDiscountCodesUpdate.cart || null;
+}
+
+/**
+ * Adds gift card codes to a cart.
+ */
+export async function addGiftCard(
+  cartId: string,
+  giftCardCodes: string[]
+): Promise<Cart | null> {
+  if (!isShopifyConfigured || !cartId) return null;
+
+  const res = await shopifyFetch<{
+    cartGiftCardCodesAdd: {
+      cart: Cart;
+      userErrors: CartUserError[];
+    };
+  }>({
+    query: addCartGiftCardCodesMutation,
+    variables: { cartId, giftCardCodes },
+    cache: "no-store",
+  });
+
+  checkCartErrors(res.body.data?.cartGiftCardCodesAdd.userErrors);
+  return res.body.data?.cartGiftCardCodesAdd.cart || null;
+}
+
+/**
+ * Removes gift card codes from a cart.
+ */
+export async function removeGiftCard(
+  cartId: string,
+  giftCardCodes: string[]
+): Promise<Cart | null> {
+  if (!isShopifyConfigured || !cartId) return null;
+
+  const res = await shopifyFetch<{
+    cartGiftCardCodesRemove: {
+      cart: Cart;
+      userErrors: CartUserError[];
+    };
+  }>({
+    query: removeCartGiftCardCodesMutation,
+    variables: { cartId, giftCardCodes },
+    cache: "no-store",
+  });
+
+  checkCartErrors(res.body.data?.cartGiftCardCodesRemove.userErrors);
+  return res.body.data?.cartGiftCardCodesRemove.cart || null;
 }
 
 /**
