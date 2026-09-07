@@ -103,7 +103,7 @@ flowchart TB
 
     UI -->|6. Proceed to Checkout| Checkout
     Webhooks -->|7. Instant Cache Purge| RevalidateRoute
-    RevalidateRoute -->|8. revalidateTag('products')| DataCache
+    RevalidateRoute -->|"8. revalidateTag(products)"| DataCache
 ```
 
 ---
