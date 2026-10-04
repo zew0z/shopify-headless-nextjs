@@ -46,7 +46,11 @@ test("owners are only api, browser, code or human", () => {
 test("go-live transitively waits for everything a shop needs", () => {
   const seen = new Set();
   const walk = (id) => {
-    for (const n of byId[id].needs) if (!seen.has(n)) (seen.add(n), walk(n));
+    for (const n of byId[id].needs) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      walk(n);
+    }
   };
   walk("go-live");
   const needed = [
