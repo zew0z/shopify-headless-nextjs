@@ -4,30 +4,14 @@ import { parseArgs } from "./args.mjs";
 import { nextActions } from "./engine.mjs";
 import { STEPS } from "./steps.mjs";
 import { loadState, markDone, saveState } from "./state.mjs";
-import { validateConfig } from "./intake.mjs";
+import { loadConfig } from "./config.mjs";
 import { applyShipping } from "./shipping.mjs";
 import { SCOPES, adminGraphQL, grantedScopes, missingScopes, servedVersion } from "../shopify/admin-client.mjs";
 import { shopMismatches, versionStatus } from "../shopify/version.mjs";
 import { bad, heading, info, ok, shopifyEnv, warn } from "../shopify/env.mjs";
 
 const STATE_FILE = "store-setup.state.json";
-const CONFIG_FILE = "store-setup.config.json";
 const { command, args, flags } = parseArgs(process.argv.slice(2));
-
-function loadConfig() {
-  if (!existsSync(CONFIG_FILE)) {
-    bad(`${CONFIG_FILE} not found. The intake step has not been done.`);
-    process.exit(1);
-  }
-  const result = validateConfig(JSON.parse(readFileSync(CONFIG_FILE, "utf8")));
-  if (!result.ok) {
-    bad(`${CONFIG_FILE} is invalid:`);
-    result.errors.forEach((e) => info(e));
-    process.exit(1);
-  }
-  if (result.assumed.length) warn(`assumed from the ${result.config.profile} profile: ${result.assumed.join(", ")}. Tell the human.`);
-  return result.config;
-}
 
 const state = loadState(STATE_FILE);
 
