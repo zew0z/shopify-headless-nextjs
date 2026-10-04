@@ -1,7 +1,7 @@
 // Shopify's input shapes drift between API versions and docs lag behind.
 // Print the live schema before writing or changing a mutation:
 //   node scripts/shopify/introspect.mjs DeliveryMethodDefinitionInput
-import { adminGraphQL, adminConfig } from "./admin-client.mjs";
+import { adminGraphQL, adminConfig, resolveAdminToken } from "./admin-client.mjs";
 import { mask } from "./env.mjs";
 
 const typeName = process.argv[2];
@@ -30,5 +30,6 @@ const render = (node) => {
   return node.name || node.kind;
 };
 const cfg = adminConfig();
-console.log(`${type.name} (${type.kind})  api ${cfg.apiVersion}  token ${mask(cfg.adminToken)}`);
+const { token, source } = await resolveAdminToken();
+console.log(`${type.name} (${type.kind})  api ${cfg.apiVersion}  token ${mask(token)} (${source})`);
 for (const field of type.inputFields ?? []) console.log(`  ${field.name}: ${render(field.type)}`);

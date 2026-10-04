@@ -1,18 +1,24 @@
 /**
  * Shopify Admin GraphQL client for the setup scripts.
  *
+ * - Resolves its own token: an explicit SHOPIFY_ADMIN_TOKEN wins, otherwise it
+ *   mints one with the client credentials grant and keeps it in memory only.
  * - Surfaces `userErrors`: Shopify returns most write failures as HTTP 200 with a
  *   populated userErrors array, so a status-only check reports success on a
  *   failed write.
  * - Backs off before the leaky bucket runs dry and retries THROTTLED / 429 / 5xx.
  */
 import { shopifyEnv } from "./env.mjs";
+import { mintAdminToken } from "./token.mjs";
 
-/** Scopes per capability, so preflight can ask only for what a step needs. */
+/** Scopes per capability, so preflight and the app setup ask for exactly what the steps need. */
 export const SCOPES = {
   shipping: ["write_shipping", "read_locations"],
   policies: ["write_legal_policies"],
+  catalogue: ["write_products", "write_publications", "write_inventory", "write_files", "read_locations"],
 };
+
+export const allScopes = () => [...new Set(Object.values(SCOPES).flat())];
 
 export function adminConfig() {
   const env = shopifyEnv();
@@ -20,11 +26,26 @@ export function adminConfig() {
     console.error("\n  SHOPIFY_STORE_DOMAIN is missing from .env.local\n");
     process.exit(1);
   }
-  if (!env.adminToken) {
-    console.error("\n  SHOPIFY_ADMIN_TOKEN is missing from .env.local - the oauth step has not run\n");
-    process.exit(1);
-  }
   return env;
+}
+
+let cached = null; // { token, expiresAt }
+export const resetTokenCache = () => {
+  cached = null;
+};
+
+/** An explicit SHOPIFY_ADMIN_TOKEN wins; otherwise mint one (24 h, memory only, refreshed a minute early). */
+export async function resolveAdminToken() {
+  const env = adminConfig();
+  if (env.adminToken) return { token: env.adminToken, source: "SHOPIFY_ADMIN_TOKEN" };
+  if (cached && cached.expiresAt > Date.now() + 60_000) return { token: cached.token, source: "client credentials" };
+  if (env.clientId && env.clientSecret) {
+    const minted = await mintAdminToken({ domain: env.domain, clientId: env.clientId, clientSecret: env.clientSecret });
+    cached = { token: minted.token, expiresAt: Date.now() + (minted.expiresIn ?? 86_399) * 1000 };
+    return { token: minted.token, source: "client credentials" };
+  }
+  console.error("\n  No Admin token. Put SHOPIFY_APP_CLIENT_ID and SHOPIFY_APP_CLIENT_SECRET in .env.local and run: pnpm shop-setup token\n  (for a store outside the app's organization: pnpm shop-setup oauth)\n");
+  process.exit(1);
 }
 
 export function missingScopes(granted, required) {
@@ -54,10 +75,11 @@ let served = null;
 export const servedVersion = () => served;
 
 export async function adminGraphQL(query, variables = {}, attempt = 0) {
-  const { domain, adminToken, apiVersion } = adminConfig();
+  const { domain, apiVersion } = adminConfig();
+  const { token } = await resolveAdminToken();
   const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
     method: "POST",
-    headers: { "X-Shopify-Access-Token": adminToken, "Content-Type": "application/json" },
+    headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),
   });
   served = response.headers.get("x-shopify-api-version") ?? served;
@@ -88,9 +110,10 @@ export async function adminGraphQL(query, variables = {}, attempt = 0) {
 }
 
 export async function grantedScopes() {
-  const { domain, adminToken } = adminConfig();
+  const { domain } = adminConfig();
+  const { token } = await resolveAdminToken();
   const response = await fetch(`https://${domain}/admin/oauth/access_scopes.json`, {
-    headers: { "X-Shopify-Access-Token": adminToken },
+    headers: { "X-Shopify-Access-Token": token },
   });
   if (!response.ok) throw new Error(`access_scopes HTTP ${response.status}: ${(await response.text()).slice(0, 200)}`);
   return (await response.json()).access_scopes.map((scope) => scope.handle);
