@@ -7,3 +7,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# Store setup
+
+To set up or take live a Shopify store behind this frontend, follow `.claude/skills/shopify-store-setup/SKILL.md` and start with `pnpm shop-setup next`.

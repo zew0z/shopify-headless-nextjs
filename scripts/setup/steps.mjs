@@ -3,7 +3,7 @@
  *   api      the agent does it with an Admin API script
  *   browser  the agent clicks it in the Shopify admin while the human is logged in
  *   human    only a person can: identity, money, legal sign-off, a real card
- * `automation` names the `pnpm setup <command>` that does it, when one exists.
+ * `automation` names the `pnpm shop-setup <command>` that does it, when one exists.
  */
 const FALLBACK = "If the browser is unavailable, give the human these exact clicks instead.";
 
@@ -15,7 +15,7 @@ export const STEPS = [
     needs: [],
     instructions:
       "Ask the business decisions once, as concrete choices, and write the answers to store-setup.config.json (see store-setup.config.example.json): tax-inclusive prices, stock tracking, shipping rates and free-shipping threshold, whether compare-at prices are real, reviews, invoicing. Do not ask anything in this file again later.",
-    verify: "pnpm setup preflight --config-only",
+    verify: "pnpm shop-setup preflight --config-only",
   },
   {
     id: "store-basics",
@@ -39,7 +39,7 @@ export const STEPS = [
     owner: "browser",
     needs: ["store-basics"],
     instructions: `Admin sidebar > Sales channels > + > Headless > Create storefront. Read the PUBLIC Storefront token off the page into .env.local (NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN). A token starting shpat_ is an Admin token and is wrong here. ${FALLBACK}`,
-    verify: "pnpm setup preflight",
+    verify: "pnpm shop-setup preflight",
   },
   {
     id: "dev-app",
@@ -61,7 +61,7 @@ export const STEPS = [
     title: "Check the Admin token has the scopes the steps need",
     owner: "api",
     needs: ["oauth"],
-    instructions: "Run pnpm setup preflight. If scopes are missing, a new app version was not released before install.",
+    instructions: "Run pnpm shop-setup preflight. If scopes are missing, a new app version was not released before install.",
     automation: "preflight",
   },
   {
@@ -69,7 +69,7 @@ export const STEPS = [
     title: "Create shipping zones and rates, including the free-shipping rule",
     owner: "api",
     needs: ["preflight", "intake"],
-    instructions: "Run pnpm setup shipping --dry-run, show the plan, then pnpm setup shipping. Refuses if the zone would collide with an existing one.",
+    instructions: "Run pnpm shop-setup shipping --dry-run, show the plan, then pnpm shop-setup shipping. Refuses if the zone would collide with an existing one.",
     automation: "shipping",
   },
   {

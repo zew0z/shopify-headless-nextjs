@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make this repo self-driving for store setup: an agent runs `pnpm setup next`, does everything it can (API or browser), and is handed exactly one human step at a time.
+**Goal:** Make this repo self-driving for store setup: an agent runs `pnpm shop-setup next`, does everything it can (API or browser), and is handed exactly one human step at a time.
 
 **Architecture:** A declarative step registry (who does it, what it needs) plus a pure engine that computes "what is ready now", a small state file, one intake config that holds every business decision, and Admin-API appliers (this plan: shipping only). Pure logic is unit-tested with `node --test`; network code is thin and verified against a Shopify development store.
 
@@ -59,7 +59,7 @@ scripts/setup/intake.mjs              validate store-setup.config.json, profile 
 scripts/setup/intake.test.mjs
 scripts/setup/shipping.mjs            pure: buildZone(), findCountryCollisions(); apply layer
 scripts/setup/shipping.test.mjs
-scripts/setup/cli.mjs                 pnpm setup status|next|done|preflight|shipping|e2e
+scripts/setup/cli.mjs                 pnpm shop-setup status|next|done|preflight|shipping|e2e
 e2e/env.mjs                           reads store-setup.config.json + env for the browser tests
 e2e/env.test.mjs                      node --test for the pure URL helpers
 e2e/checkout-host.spec.mjs            cart -> checkoutUrl host is checkout.<domain>
@@ -90,7 +90,7 @@ In `package.json` `"scripts"` add:
 
 ```json
 "test:scripts": "node --test \"scripts/**/*.test.mjs\" \"e2e/**/*.test.mjs\"",
-"setup": "node scripts/setup/cli.mjs"
+"shop-setup": "node scripts/setup/cli.mjs"
 ```
 
 - [ ] **Step 2: Write the failing test**
@@ -622,7 +622,7 @@ export function saveState(file, state) {
  *   api      the agent does it with an Admin API script
  *   browser  the agent clicks it in the Shopify admin while the human is logged in
  *   human    only a person can: identity, money, legal sign-off, a real card
- * `automation` names the `pnpm setup <command>` that does it, when one exists.
+ * `automation` names the `pnpm shop-setup <command>` that does it, when one exists.
  */
 const FALLBACK = "If the browser is unavailable, give the human these exact clicks instead.";
 
@@ -634,7 +634,7 @@ export const STEPS = [
     needs: [],
     instructions:
       "Ask the business decisions once, as concrete choices, and write the answers to store-setup.config.json (see store-setup.config.example.json): tax-inclusive prices, stock tracking, shipping rates and free-shipping threshold, whether compare-at prices are real, reviews, invoicing. Do not ask anything in this file again later.",
-    verify: "pnpm setup preflight --config-only",
+    verify: "pnpm shop-setup preflight --config-only",
   },
   {
     id: "store-basics",
@@ -658,7 +658,7 @@ export const STEPS = [
     owner: "browser",
     needs: ["store-basics"],
     instructions: `Admin sidebar > Sales channels > + > Headless > Create storefront. Read the PUBLIC Storefront token off the page into .env.local (NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN). A token starting shpat_ is an Admin token and is wrong here. ${FALLBACK}`,
-    verify: "pnpm setup preflight",
+    verify: "pnpm shop-setup preflight",
   },
   {
     id: "dev-app",
@@ -680,7 +680,7 @@ export const STEPS = [
     title: "Check the Admin token has the scopes the steps need",
     owner: "api",
     needs: ["oauth"],
-    instructions: "Run pnpm setup preflight. If scopes are missing, a new app version was not released before install.",
+    instructions: "Run pnpm shop-setup preflight. If scopes are missing, a new app version was not released before install.",
     automation: "preflight",
   },
   {
@@ -688,7 +688,7 @@ export const STEPS = [
     title: "Create shipping zones and rates, including the free-shipping rule",
     owner: "api",
     needs: ["preflight", "intake"],
-    instructions: "Run pnpm setup shipping --dry-run, show the plan, then pnpm setup shipping. Refuses if the zone would collide with an existing one.",
+    instructions: "Run pnpm shop-setup shipping --dry-run, show the plan, then pnpm shop-setup shipping. Refuses if the zone would collide with an existing one.",
     automation: "shipping",
   },
   {
@@ -1247,7 +1247,7 @@ git commit -m "feat(setup): shipping zone builder with free-shipping rule and co
 
 **Interfaces:**
 - Consumes: everything above.
-- Produces: `pnpm setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>]`.
+- Produces: `pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>]`.
 
 - [ ] **Step 1: Implement the CLI**
 
@@ -1332,17 +1332,17 @@ switch (command) {
     break;
   }
   default:
-    console.log("usage: pnpm setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>]");
+    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>]");
     process.exit(command ? 1 : 0);
 }
 ```
 
 - [ ] **Step 2: Smoke-test what needs no network**
 
-Run: `pnpm setup status && pnpm setup next`
+Run: `pnpm shop-setup status && pnpm shop-setup next`
 Expected: `status` lists all 21 steps; only `intake` and `store-basics` are `ready`; everything else is `wait`. `next` shows no agent steps and asks the human for `intake`.
 
-Run: `cp store-setup.config.example.json store-setup.config.json && pnpm setup preflight --config-only && rm store-setup.config.json`
+Run: `cp store-setup.config.example.json store-setup.config.json && pnpm shop-setup preflight --config-only && rm store-setup.config.json`
 Expected: `[warn] assumed from the gr profile: currency, pricesIncludeTax, shippingCountries, invoicing, checkoutSubdomain` then `[ok] config valid (profile gr, EUR)`.
 
 - [ ] **Step 3: Write the runbook**
@@ -1361,17 +1361,17 @@ The agent does its part and asks the human only for what only a human can do.
 
 ## The loop
 
-1. `pnpm setup next`. It prints what you can do now and the ONE thing to ask the human.
+1. `pnpm shop-setup next`. It prints what you can do now and the ONE thing to ask the human.
 2. Start the agent steps immediately, in parallel with the human step.
 3. Ask the human for the one step, in plain words, with the exact menu path. Wait.
-4. When a step is done and checked, `pnpm setup done <id> "<note>"`.
-5. Repeat until `pnpm setup status` shows everything done.
+4. When a step is done and checked, `pnpm shop-setup done <id> "<note>"`.
+5. Repeat until `pnpm shop-setup status` shows everything done.
 
 Do not ask for two human things at once. Do not ask anything the questionnaire already answered.
 
 ## Intake first
 
-If `store-setup.config.json` is missing, ask the business decisions once with AskUserQuestion (concrete choices, trade-off in the description, commercial words not technical ones): stock tracking, shipping rates and free-shipping threshold, whether compare-at prices are real, reviews. Write the answers to `store-setup.config.json` (shape: `store-setup.config.example.json`). Tell the human which values the profile assumed (`pnpm setup preflight --config-only` prints them).
+If `store-setup.config.json` is missing, ask the business decisions once with AskUserQuestion (concrete choices, trade-off in the description, commercial words not technical ones): stock tracking, shipping rates and free-shipping threshold, whether compare-at prices are real, reviews. Write the answers to `store-setup.config.json` (shape: `store-setup.config.example.json`). Tell the human which values the profile assumed (`pnpm shop-setup preflight --config-only` prints them).
 
 If they say "decide later" on tax: push back once (it cannot change after the first order), then use tax-inclusive for EU retail and say you did.
 
@@ -1391,7 +1391,7 @@ Only while the human is logged into Shopify and watching. Never type a password,
 
 ## Done means
 
-`pnpm setup status` all done, the test order placed and refunded, an invoice issued for it, and credentials rotated.
+`pnpm shop-setup status` all done, the test order placed and refunded, an invoice issued for it, and credentials rotated.
 ````
 
 - [ ] **Step 4: Point AGENTS.md at it**
@@ -1402,7 +1402,7 @@ Append to `AGENTS.md` (after the existing Next.js block, outside its BEGIN/END m
 
 # Store setup
 
-To set up or take live a Shopify store behind this frontend, follow `.claude/skills/shopify-store-setup/SKILL.md` and start with `pnpm setup next`.
+To set up or take live a Shopify store behind this frontend, follow `.claude/skills/shopify-store-setup/SKILL.md` and start with `pnpm shop-setup next`.
 ```
 
 - [ ] **Step 5: Confirm secrets are ignored**
@@ -1429,7 +1429,7 @@ The frontend in this repo is a demo shell and every real frontend will look diff
 
 **Interfaces:**
 - Consumes: `shopifyEnv` (Task 1), `validateConfig` (Task 4).
-- Produces: `checkoutHost(config): string`, `isOnHost(url, host): boolean`, `loadE2E(): { config, env, siteUrl }`; `pnpm test:e2e`; `pnpm setup e2e`.
+- Produces: `checkoutHost(config): string`, `isOnHost(url, host): boolean`, `loadE2E(): { config, env, siteUrl }`; `pnpm test:e2e`; `pnpm shop-setup e2e`.
 
 - [ ] **Step 1: Install Playwright**
 
@@ -1636,9 +1636,9 @@ Expected: all pass. Report real output; fix before continuing if anything fails.
 Needs a Shopify development store (human creates it in the Dev Dashboard) with `.env.local` set.
 
 ```bash
-pnpm setup preflight
-pnpm setup shipping --dry-run
-pnpm setup shipping
+pnpm shop-setup preflight
+pnpm shop-setup shipping --dry-run
+pnpm shop-setup shipping
 ```
 
 Expected: scopes ok; the dry run prints the zone; the real run creates it. Then in the store: Settings > Shipping and delivery shows the zone with the paid rates and the free rule, and a test checkout at 499.99 and at 500.00 shows the right option. Also run twice: the second run must refuse with the collision message, not duplicate.
@@ -1673,3 +1673,11 @@ If the live schema differed in Task 5 Step 1, the code and tests were already ch
 - **Spec coverage:** one repo only (all tasks); Greece default with configurable profile (Task 4); app-based invoicing, no custom code (steps `invoicing`, `test-order`); browser steps with human watching and credential rules (registry + skill); human gets one step at a time (Task 3 engine); questionnaire asked once (Task 4, skill). Theme redirect, checkout subdomain and custom emails (added 2026-10-04) are in the registry and the intake config now, so the agent hands them out in the right order; their automation is in follow-on plan 2. Gaps by design: policies, browser click scripts, catalogue push, webhooks (follow-on list).
 - **Placeholders:** none in code steps. Two honest unknowns are stated, not hidden: live Delivery* input shapes (Task 5 Step 1) and whether the tax toggle has an API (treated as browser step).
 - **Type consistency:** `Step`, `State`, `Config`, `buildZone`, `findCountryCollisions`, `applyShipping({config, dryRun, locationId})`, `missingScopes(granted, required)` match across tasks 1–6. The CLI passes `config` into `applyShipping`, and the `profile` fixture shape in the collision test matches the `DISCOVERY` query.
+
+## Corrections made while building (2026-10-04)
+
+Found by running the code, not by reading it:
+
+- `node --test scripts/` does not work on Node 24 (a bare folder is treated as a module). The script uses file globs: `node --test "scripts/**/*.test.mjs" "e2e/**/*.test.mjs"`.
+- `setup` collides with pnpm's own built-in `setup` command, so the command is `pnpm shop-setup`.
+- The first CLI parsed `--dry-run` as unset (`Object.fromEntries` gives `undefined` for a bare flag), so `shipping --dry-run` would have performed a real write. Fixed test-first with `scripts/setup/args.mjs` (`parseArgs`), where a bare flag is `true`, and the CLI checks `flags["dry-run"] === true`.
