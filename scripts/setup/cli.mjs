@@ -10,6 +10,7 @@ import { loadState, markDone, saveState } from "./state.mjs";
 import { loadConfig } from "./config.mjs";
 import { applyShipping } from "./shipping.mjs";
 import { SCOPES, adminGraphQL, grantedScopes, missingScopes, servedVersion } from "../shopify/admin-client.mjs";
+import { loadSdkDocuments, validateDocuments } from "../shopify/validate-storefront.mjs";
 import { shopMismatches, versionStatus } from "../shopify/version.mjs";
 import { bad, heading, info, ok, shopifyEnv, warn } from "../shopify/env.mjs";
 
@@ -123,12 +124,20 @@ switch (command) {
     if (!config.tracksInventory) warn("nothing is tracked: no product will ever show sold out. The owner must know this.");
     break;
   }
+  case "validate-queries": {
+    const version = typeof flags.version === "string" ? flags.version : shopifyEnv().apiVersion;
+    const results = await validateDocuments({ version, documents: loadSdkDocuments() });
+    for (const r of results) (r.ok ? ok : bad)(`${r.name}${r.ok ? "" : ": " + r.problems.join("; ")}`);
+    const failed = results.filter((r) => !r.ok);
+    info(`${results.length - failed.length} of ${results.length} documents valid against ${version}`);
+    process.exit(failed.length ? 1 : 0);
+  }
   case "e2e": {
     const run = spawnSync("pnpm", ["exec", "playwright", "test"], { stdio: "inherit" });
     if (run.status === 0) info("Skipped tests are not passes. Check the output above for skips before marking this step done.");
     process.exit(run.status ?? 1);
   }
   default:
-    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | e2e");
+    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | validate-queries [--version=YYYY-MM] | e2e");
     process.exit(command ? 1 : 0);
 }

@@ -20,7 +20,7 @@ flowchart TD
     subgraph Backend_SDK ["src/lib/shopify (Universal SDK)"]
         CLIENT["client.ts\n• Exp Backoff (429 Retries)\n• Buyer IP Forwarding\n• Timeout Abort"]
         SDK["index.ts\nCatalog • Cart • Gift Cards • Subscriptions"]
-        QUERIES["queries.ts & mutations.ts\nGraphQL Storefront API 2025-01"]
+        QUERIES["queries.ts & mutations.ts\nGraphQL Storefront API 2026-07"]
     end
 
     subgraph Shopify_Cloud ["Shopify Infrastructure"]
@@ -41,13 +41,13 @@ flowchart TD
 
 ## ⚡ Key Backend Capabilities
 
-1. **Storefront API 2025-01 Standard**:
+1. **Storefront API 2026-07 Standard**:
    - 100% compliant with the mandatory Cart API lifecycle (`cartCreate`, `cartLinesAdd`, `cartLinesUpdate`, `cartLinesRemove`).
    - Deprecated `checkoutCreate` completely omitted in accordance with Shopify's platform deprecations.
 
 2. **Advanced Cart & Checkout Operations**:
    - **Subscriptions & Selling Plans**: Support for `sellingPlanId` on cart lines with automatic `sellingPlanAllocation` breakdown.
-   - **Gift Cards**: Dedicated `addGiftCard()` and `removeGiftCard()` using Shopify's `cartGiftCardCodesAdd` mutation (tender management separate from discounts).
+   - **Gift Cards**: Dedicated `addGiftCard()` and `removeGiftCard()` using Shopify's `cartGiftCardCodesAdd` / `cartGiftCardCodesRemove` mutations (removal takes the applied card ids from `cart.appliedGiftCards[].id`, not the codes) (tender management separate from discounts).
    - **Promo / Discount Codes**: Full application and error feedback using `cartDiscountCodesUpdate`.
    - **Buyer Identity & SSO**: Links logged-in customer OAuth tokens (`customerAccessToken`) directly into the cart session so stored payment methods and shipping addresses are pre-filled at checkout.
 
@@ -95,7 +95,7 @@ Create or update `.env.local`:
 # Required: Shopify store domain and Storefront access token
 NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=your-store-name.myshopify.com
 NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=your_storefront_public_token
-SHOPIFY_STOREFRONT_API_VERSION=2025-01
+SHOPIFY_STOREFRONT_API_VERSION=2026-07
 
 # Optional: Private token for SSR buyer-IP forwarding
 SHOPIFY_STOREFRONT_PRIVATE_TOKEN=

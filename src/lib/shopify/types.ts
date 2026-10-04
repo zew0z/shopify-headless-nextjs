@@ -215,6 +215,8 @@ export interface CartDiscountCode {
 }
 
 export interface AppliedGiftCard {
+  /** Needed to remove the card: Shopify no longer removes by code. */
+  id: string;
   lastCharacters: string;
   amountUsed: Money;
   balance: Money;

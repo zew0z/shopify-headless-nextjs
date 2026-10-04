@@ -201,6 +201,7 @@ export const cartFragment = /* GraphQL */ `
       applicable
     }
     appliedGiftCards {
+      id
       lastCharacters
       amountUsed {
         amount
@@ -331,6 +332,25 @@ export const getCollectionProductsQuery = /* GraphQL */ `
   ${productFragment}
 `;
 
+/**
+ * A GraphQL document may define each fragment once. productFragment and
+ * collectionFragment both embed imageFragment, so a document that uses both
+ * needs the repeats dropped.
+ */
+export function dedupeFragments(source: string): string {
+  const seen = new Set<string>();
+  return source
+    .split(/(?=^\s*fragment\s)/m)
+    .filter((block) => {
+      const name = block.match(/^\s*fragment\s+(\w+)/)?.[1];
+      if (!name) return true;
+      if (seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    })
+    .join("");
+}
+
 export const predictiveSearchQuery = /* GraphQL */ `
   query PredictiveSearch(
     $query: String!
@@ -356,8 +376,7 @@ export const predictiveSearchQuery = /* GraphQL */ `
       }
     }
   }
-  ${productFragment}
-  ${collectionFragment}
+  ${dedupeFragments(productFragment + collectionFragment)}
 `;
 
 export const getCartQuery = /* GraphQL */ `

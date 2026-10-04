@@ -52,6 +52,7 @@ Only while the human is logged into Shopify and watching. Never type a password,
 - Policies and legal text are drafted by you and approved by a person. Never publish unread.
 - Never invent reviews, "was" prices or testimonials.
 - Introspect before changing a mutation: `node scripts/shopify/introspect.mjs <InputTypeName>`.
+- After touching `src/lib/shopify` or the Storefront API version, run `pnpm shop-setup validate-queries`. Every document must be valid; fix the SDK, not the store.
 - Shopify moves menus. If a path is gone, use the admin search box with the bold term, then fix `scripts/setup/steps.mjs`.
 
 ## Done means

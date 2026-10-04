@@ -584,11 +584,12 @@ export async function addGiftCard(
 }
 
 /**
- * Removes gift card codes from a cart.
+ * Removes applied gift cards from a cart. Shopify removes by applied-card id,
+ * not by code: take the ids from `cart.appliedGiftCards[].id`.
  */
 export async function removeGiftCard(
   cartId: string,
-  giftCardCodes: string[]
+  appliedGiftCardIds: string[]
 ): Promise<Cart | null> {
   if (!isShopifyConfigured || !cartId) return null;
 
@@ -599,7 +600,7 @@ export async function removeGiftCard(
     };
   }>({
     query: removeCartGiftCardCodesMutation,
-    variables: { cartId, giftCardCodes },
+    variables: { cartId, appliedGiftCardIds },
     cache: "no-store",
   });
 

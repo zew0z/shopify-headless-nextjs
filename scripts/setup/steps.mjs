@@ -18,6 +18,15 @@ export const STEPS = [
     verify: "pnpm shop-setup preflight --config-only",
   },
   {
+    id: "sdk-queries",
+    title: "Check the frontend's Shopify queries against the API version in use",
+    owner: "api",
+    needs: [],
+    instructions:
+      "Run pnpm shop-setup validate-queries. It uses shopify.dev's public schema proxy, so it needs no store and no token. Every document must be valid against the configured version (SHOPIFY_STOREFRONT_API_VERSION, default in src/lib/shopify/config.ts). Run it again whenever src/lib/shopify or that version changes. A failing document is fixed in the SDK, never worked around in the store.",
+    automation: "validate-queries",
+  },
+  {
     id: "store-basics",
     title: "Confirm store country, currency and contact email",
     owner: "human",
@@ -286,7 +295,7 @@ export const STEPS = [
     id: "go-live",
     title: "Final check before telling anyone the shop is ready",
     owner: "human",
-    needs: ["test-order", "rotate-secrets", "legal-details", "withdrawal-button", "cookie-consent", "hosting", "catalogue", "inventory", "courier", "cod-payment", "eu-vat", "customer-accounts", "staff-alerts", "languages", "search-console", "policies-approve"],
+    needs: ["sdk-queries", "test-order", "rotate-secrets", "legal-details", "withdrawal-button", "cookie-consent", "hosting", "catalogue", "inventory", "courier", "cod-payment", "eu-vat", "customer-accounts", "staff-alerts", "languages", "search-console", "policies-approve"],
     instructions:
       "Run pnpm shop-setup status: every step must be done, or marked done with an n/a reason. Read the list of n/a reasons back to the owner. Only then say the shop is ready.",
   },

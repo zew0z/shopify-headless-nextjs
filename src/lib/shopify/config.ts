@@ -22,7 +22,7 @@ function sanitizeDomain(domain?: string): string {
 const rawDomain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || process.env.SHOPIFY_STORE_DOMAIN;
 const rawPublicToken = process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN || process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN;
 const rawPrivateToken = process.env.SHOPIFY_STOREFRONT_PRIVATE_TOKEN;
-const rawApiVersion = process.env.SHOPIFY_STOREFRONT_API_VERSION || "2025-01";
+const rawApiVersion = process.env.SHOPIFY_STOREFRONT_API_VERSION || "2026-07";
 const rawWebhookSecret = process.env.SHOPIFY_WEBHOOK_SECRET;
 
 export const shopifyConfig = {
@@ -35,7 +35,7 @@ export const shopifyConfig = {
   /** Private Storefront API Token (recommended for SSR to bypass server IP rate limits) */
   privateAccessToken: rawPrivateToken?.trim() || "",
 
-  /** Shopify GraphQL Storefront API Version (default: 2025-01) */
+  /** Shopify GraphQL Storefront API Version (default: 2026-07) */
   apiVersion: rawApiVersion.trim(),
 
   /** Webhook Secret for HMAC verification of revalidation webhooks */

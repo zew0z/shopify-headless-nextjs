@@ -73,3 +73,11 @@ test("catalogue and inventory name the commands that do them", () => {
   assert.match(byId.catalogue.instructions, /catalogue-verify/);
   assert.equal(byId.inventory.automation, "inventory-check");
 });
+
+test("the SDK query check needs no credentials, starts immediately, and go-live waits for it", () => {
+  assert.equal(byId["sdk-queries"].owner, "api");
+  assert.deepEqual(byId["sdk-queries"].needs, []);
+  assert.equal(byId["sdk-queries"].automation, "validate-queries");
+  assert.match(byId["sdk-queries"].instructions, /pnpm shop-setup validate-queries/);
+  assert.ok(byId["go-live"].needs.includes("sdk-queries"));
+});

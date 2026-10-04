@@ -1,6 +1,6 @@
 # Shopify Headless SDK & Backend Integration Blueprint
 > **For Next.js 14 / 15+ (App Router) & React**  
-> *Production-tested with Shopify Storefront API 2025-01*
+> *Storefront queries validated against Shopify Storefront API 2026-07 (run `pnpm shop-setup validate-queries` to re-check)*
 
 This guide and codebase provide a modular backend architecture for connecting custom Next.js frontends to Shopify. It eliminates boilerplate and handles rate limits, caching, and checkout redirection out of the box.
 
@@ -39,8 +39,8 @@ NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
 # 2. Public Storefront Access Token (From Headless Channel)
 NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=your_public_storefront_access_token
 
-# 3. Storefront API Version (Default: 2025-01)
-SHOPIFY_STOREFRONT_API_VERSION=2025-01
+# 3. Storefront API Version (Default: 2026-07)
+SHOPIFY_STOREFRONT_API_VERSION=2026-07
 
 # --- Optional Production Secrets (Recommended for high traffic) ---
 # 4. Private Token (Bypasses server IP 429 throttling via Buyer-IP forwarding)
@@ -87,7 +87,7 @@ flowchart TB
     end
 
     subgraph Shopify ["Shopify Platform"]
-        SFAPI[Storefront GraphQL API 2025-01]
+        SFAPI[Storefront GraphQL API 2026-07]
         Webhooks[Admin Webhooks: products/update]
         Checkout[Shopify Hosted Checkout]
     end

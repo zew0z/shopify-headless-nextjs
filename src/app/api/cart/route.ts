@@ -46,7 +46,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(cart);
       }
       case "removeGiftCard": {
-        const cart = await removeGiftCard(body.cartId, body.giftCardCodes);
+        if (!Array.isArray(body.appliedGiftCardIds)) {
+          return NextResponse.json(
+            { error: "removeGiftCard needs appliedGiftCardIds (take them from cart.appliedGiftCards[].id); removing by code is no longer supported by Shopify" },
+            { status: 400 }
+          );
+        }
+        const cart = await removeGiftCard(body.cartId, body.appliedGiftCardIds);
         return NextResponse.json(cart);
       }
       case "buyerIdentity": {

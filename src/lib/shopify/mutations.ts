@@ -69,7 +69,7 @@ export const removeFromCartMutation = /* GraphQL */ `
 `;
 
 export const updateCartDiscountCodesMutation = /* GraphQL */ `
-  mutation UpdateCartDiscountCodes($cartId: ID!, $discountCodes: [String!]) {
+  mutation UpdateCartDiscountCodes($cartId: ID!, $discountCodes: [String!]!) {
     cartDiscountCodesUpdate(cartId: $cartId, discountCodes: $discountCodes) {
       cart {
         ...CartFragment
@@ -101,8 +101,8 @@ export const addCartGiftCardCodesMutation = /* GraphQL */ `
 `;
 
 export const removeCartGiftCardCodesMutation = /* GraphQL */ `
-  mutation RemoveCartGiftCardCodes($cartId: ID!, $giftCardCodes: [String!]!) {
-    cartGiftCardCodesRemove(cartId: $cartId, giftCardCodes: $giftCardCodes) {
+  mutation RemoveCartGiftCardCodes($cartId: ID!, $appliedGiftCardIds: [ID!]!) {
+    cartGiftCardCodesRemove(cartId: $cartId, appliedGiftCardIds: $appliedGiftCardIds) {
       cart {
         ...CartFragment
       }
