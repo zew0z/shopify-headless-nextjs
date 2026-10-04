@@ -5,6 +5,8 @@ description: Set up a Shopify store behind this headless frontend end to end - t
 
 # Shopify store setup
 
+**This is a manual for the agent. Nothing here runs on its own.** You read it, decide what to do, run the scripts yourself, and talk to the human in chat. `pnpm shop-setup next` only tells you what is ready; it never acts.
+
 The agent does its part and asks the human only for what only a human can do.
 
 ## The loop
