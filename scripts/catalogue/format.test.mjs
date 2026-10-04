@@ -1,0 +1,78 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { validateCatalog } from "./format.mjs";
+
+const variant = (over = {}) => ({ sku: "A-1", price: "10.00", ...over });
+const product = (over = {}) => ({ handle: "chair", title: "Chair", variants: [variant()], ...over });
+const catalog = (products = [product()], collections = []) => ({ collections, products });
+const problems = (c, o) => validateCatalog(c, o).join("\n");
+
+test("a minimal catalogue is pushable", () => {
+  assert.deepEqual(validateCatalog(catalog()), []);
+});
+
+test("handles must be url-safe and unique", () => {
+  assert.match(problems(catalog([product({ handle: "Bad Handle" })])), /handle not url-safe/);
+  assert.match(problems(catalog([product(), product({ variants: [variant({ sku: "B" })] })])), /duplicate product handle/);
+});
+
+test("skus are required and unique across the catalogue", () => {
+  assert.match(problems(catalog([product({ variants: [{ price: "1" }] })])), /without a sku/);
+  assert.match(problems(catalog([product(), product({ handle: "sofa" })])), /duplicate sku/);
+});
+
+test("price must be positive and compare-at must exceed it", () => {
+  assert.match(problems(catalog([product({ variants: [variant({ price: "0" })] })])), /price must be a positive number/);
+  assert.match(problems(catalog([product({ variants: [variant({ compareAtPrice: "10.00" })] })])), /compareAtPrice must exceed price/);
+  assert.deepEqual(validateCatalog(catalog([product({ variants: [variant({ compareAtPrice: "12.00" })] })])), []);
+});
+
+test("images must be https url strings, at most 20", () => {
+  assert.match(problems(catalog([product({ images: ["http://x/a.jpg"] })])), /not https/);
+  assert.match(problems(catalog([product({ images: [{ huge: "https://x" }] })])), /expected a url string/);
+  assert.match(problems(catalog([product({ images: Array.from({ length: 21 }, (_, i) => `https://x/${i}.jpg`) })])), /first 20/);
+});
+
+test("options: variants must use declared options and values, with no duplicate combinations", () => {
+  const withOptions = (variants) => product({ options: [{ name: "Colour", values: ["Grey", "Beige"] }], variants });
+  assert.match(problems(catalog([withOptions([variant({ options: { Colour: "Red" } })])])), /not in the declared values/);
+  assert.match(problems(catalog([withOptions([variant({ options: { Size: "L" } })])])), /not declared/);
+  assert.match(problems(catalog([withOptions([variant()])])), /sets 0 option/);
+  const dup = withOptions([variant({ options: { Colour: "Grey" } }), variant({ sku: "A-2", options: { Colour: "Grey" } })]);
+  assert.match(problems(catalog([dup])), /share the option combination/);
+});
+
+test("more than three options or 2048 variants is rejected", () => {
+  const four = ["a", "b", "c", "d"].map((name) => ({ name, values: ["x"] }));
+  assert.match(problems(catalog([product({ options: four, variants: [variant({ options: { a: "x", b: "x", c: "x", d: "x" } })] })])), /options; Shopify allows 3/);
+  const many = Array.from({ length: 2049 }, (_, i) => variant({ sku: `S${i}` }));
+  assert.match(problems(catalog([product({ variants: many })])), /2049 variants/);
+});
+
+test("collections must exist, with unique url-safe handles", () => {
+  assert.match(problems(catalog([product({ collections: ["nope"] })])), /unknown collection/);
+  assert.match(problems(catalog([], [{ handle: "a", title: "A" }, { handle: "a", title: "A2" }])), /duplicate collection handle/);
+  assert.deepEqual(validateCatalog(catalog([product({ collections: ["a"] })], [{ handle: "a", title: "A" }])), []);
+});
+
+test("list metafields must be JSON-encoded arrays", () => {
+  const bad = { namespace: "custom", key: "colors", type: "list.single_line_text_field", value: "red" };
+  assert.match(problems(catalog([product({ metafields: [bad] })])), /JSON-encoded array/);
+});
+
+test("descriptions must not link out to the vendor's shop", () => {
+  const html = '<p>Buy at <a href="https://vendor.example/p/1">vendor</a></p>';
+  assert.match(problems(catalog([product({ descriptionHtml: html })])), /links out/);
+  assert.deepEqual(validateCatalog(catalog([product({ descriptionHtml: "<p>Nice chair</p>" })])), []);
+});
+
+test("a shop that tracks stock needs an integer quantity on every variant", () => {
+  assert.match(problems(catalog(), { tracksInventory: true }), /integer quantity/);
+  const ok = catalog([product({ variants: [variant({ quantity: 3 })] })]);
+  assert.deepEqual(validateCatalog(ok, { tracksInventory: true }), []);
+});
+
+test("a shop that does not track stock rejects variants claiming tracked: true", () => {
+  const c = catalog([product({ variants: [variant({ tracked: true })] })]);
+  assert.match(problems(c, { tracksInventory: false }), /does not track inventory/);
+});
