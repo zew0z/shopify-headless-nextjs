@@ -453,8 +453,10 @@ function run({ callback, exchange, timeoutMs = 5000 }) {
   });
   const browser = ready.then(async ({ redirect, authorizeUrl }) => {
     const state = new URL(authorizeUrl).searchParams.get("state");
+    const fields = [...callback(state)];
+    if (!fields.length) return; // nobody clicks Install
     const target = new URL(redirect.replace("localhost", "127.0.0.1"));
-    for (const [k, v] of callback(state)) target.searchParams.set(k, v);
+    for (const [k, v] of fields) target.searchParams.set(k, v);
     await fetch(target);
   });
   return { promise, browser, saved };
@@ -512,7 +514,7 @@ test("nobody clicking Install ends in a timeout, not a hang", async () => {
 });
 ```
 
-Note the last test's `browser` promise is intentionally not awaited: with an empty callback the "browser" still calls the redirect without a state, which the server may already have closed; the unhandled fetch error is harmless and is silenced by the test finishing first. If it proves flaky, call `run(...).browser.catch(() => {})`.
+The fake browser makes no request when the callback gives no fields: that is the "nobody clicks Install" case.
 
 - [ ] **Step 2: Run, expect FAIL** (`Cannot find module './oauth.mjs'`)
 
@@ -628,7 +630,7 @@ export function runOAuth({ domain, clientId, clientSecret, scopes, port = REDIRE
 - [ ] **Step 4: Run, expect PASS**
 
 Run: `pnpm test:scripts`
-Expected: PASS. If the timeout test leaves an unhandled rejection, apply the note in Step 1.
+Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
