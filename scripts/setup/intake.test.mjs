@@ -12,6 +12,8 @@ const answers = {
   wantsReviews: false,
 };
 
+const without = (obj, key) => Object.fromEntries(Object.entries(obj).filter(([k]) => k !== key));
+
 test("greece profile fills the market defaults and reports what it assumed", () => {
   const r = validateConfig(answers);
   assert.equal(r.ok, true, r.errors.join("; "));
@@ -24,7 +26,7 @@ test("greece profile fills the market defaults and reports what it assumed", () 
 });
 
 test("siteDomain is required and must be a bare hostname, not a URL", () => {
-  const { siteDomain, ...rest } = answers;
+  const rest = without(answers, "siteDomain");
   assert.match(validateConfig(rest).errors.join("\n"), /siteDomain/);
   assert.match(validateConfig({ ...answers, siteDomain: "https://example.gr/" }).errors.join("\n"), /siteDomain/);
   assert.equal(validateConfig({ ...answers, siteDomain: "shop.example.gr" }).ok, true);
@@ -36,7 +38,7 @@ test("checkoutSubdomain must be a single DNS label", () => {
 });
 
 test("business decisions have no defaults and must be answered", () => {
-  const { tracksInventory, ...rest } = answers;
+  const rest = without(answers, "tracksInventory");
   const r = validateConfig(rest);
   assert.equal(r.ok, false);
   assert.match(r.errors.join("\n"), /tracksInventory/);
@@ -44,7 +46,7 @@ test("business decisions have no defaults and must be answered", () => {
 
 test("freeShippingThreshold may be an explicit null but not absent", () => {
   assert.equal(validateConfig({ ...answers, freeShippingThreshold: null }).ok, true);
-  const { freeShippingThreshold, ...rest } = answers;
+  const rest = without(answers, "freeShippingThreshold");
   assert.equal(validateConfig(rest).ok, false);
 });
 
