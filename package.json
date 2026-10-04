@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:scripts": "node --test \"scripts/**/*.test.mjs\" \"e2e/**/*.test.mjs\"",
+    "test:scripts": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"scripts/**/*.test.mjs\" \"e2e/**/*.test.mjs\"",
     "shop-setup": "node scripts/setup/cli.mjs",
     "test:e2e": "playwright test"
   },

@@ -100,7 +100,7 @@ SHOPIFY_STOREFRONT_API_VERSION=2026-07
 # Optional: Private token for SSR buyer-IP forwarding
 SHOPIFY_STOREFRONT_PRIVATE_TOKEN=
 
-# Optional: Webhook secret for HMAC cache revalidation
+# Required for /api/revalidate: webhook secret (the app client secret when webhooks are created through the Admin API)
 SHOPIFY_WEBHOOK_SECRET=
 ```
 

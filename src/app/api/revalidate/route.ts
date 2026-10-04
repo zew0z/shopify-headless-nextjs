@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import crypto from "crypto";
 import { shopifyConfig } from "@/lib/shopify/config";
+import { verifyShopifyWebhook } from "@/lib/shopify/webhook";
 
 /**
  * Shopify On-Demand ISR Cache Revalidation Route
@@ -17,23 +17,10 @@ export async function POST(req: NextRequest) {
     const topic = req.headers.get("x-shopify-topic"); // e.g. "products/update"
     const shopDomain = req.headers.get("x-shopify-shop-domain");
 
-    // 1. Verify HMAC if secret is configured
-    if (shopifyConfig.webhookSecret) {
-      if (!hmacHeader) {
-        return NextResponse.json({ error: "Missing x-shopify-hmac-sha256 header" }, { status: 401 });
-      }
-
-      const hash = crypto
-        .createHmac("sha256", shopifyConfig.webhookSecret)
-        .update(rawBody, "utf8")
-        .digest("base64");
-
-      const hashBuffer = Buffer.from(hash);
-      const headerBuffer = Buffer.from(hmacHeader);
-
-      if (hashBuffer.length !== headerBuffer.length || !crypto.timingSafeEqual(hashBuffer, headerBuffer)) {
-        return NextResponse.json({ error: "Invalid HMAC signature" }, { status: 401 });
-      }
+    // 1. Verify the signature. Fails closed: no secret means no webhooks accepted.
+    const check = verifyShopifyWebhook(rawBody, hmacHeader, shopifyConfig.webhookSecret);
+    if (!check.ok) {
+      return NextResponse.json({ error: check.reason }, { status: check.status });
     }
 
     let payload: Record<string, unknown> = {};
