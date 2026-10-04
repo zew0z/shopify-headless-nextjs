@@ -1,0 +1,12 @@
+{
+  "profile": "gr",
+  "siteDomain": "example.gr",
+  "tracksInventory": false,
+  "freeShippingThreshold": 500,
+  "shippingRates": [
+    { "name": "Standard", "price": 5.9, "maxWeightKg": 30 },
+    { "name": "Heavy delivery", "price": 29, "minWeightKg": 30 }
+  ],
+  "compareAtIsReal": false,
+  "wantsReviews": false
+}
