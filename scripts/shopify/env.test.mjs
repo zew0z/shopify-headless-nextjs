@@ -37,3 +37,12 @@ test("mask never prints a whole token", () => {
 test("the default API version is one Shopify still supports", () => {
   assert.equal(shopifyEnv({}).apiVersion, "2026-07");
 });
+
+test("real environment variables are visible to the scripts and win over files", () => {
+  process.env.SHOPIFY_STORE_DOMAIN = "from-process";
+  try {
+    assert.equal(shopifyEnv().domain, "from-process.myshopify.com");
+  } finally {
+    delete process.env.SHOPIFY_STORE_DOMAIN;
+  }
+});

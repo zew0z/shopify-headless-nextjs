@@ -27,10 +27,11 @@ export function parseEnv(text) {
   return env;
 }
 
+/** Files first, then real environment variables, which win (that is how a host or CI passes them). */
 export function readEnv() {
   const env = {};
   for (const file of ENV_FILES) if (existsSync(file)) Object.assign(env, parseEnv(readFileSync(file, "utf8")));
-  return env;
+  return Object.assign(env, process.env);
 }
 
 /** Writes one key to `.env.local`, in place when present so comments survive. */
