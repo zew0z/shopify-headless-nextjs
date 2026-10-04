@@ -19,6 +19,17 @@ The agent does its part and asks the human only for what only a human can do.
 
 Do not ask for two human things at once. Do not ask anything the questionnaire already answered.
 
+## Who does each step
+
+| Owner | Meaning |
+|---|---|
+| `api` | You run a script that calls the Shopify Admin API |
+| `browser` | You click through the Shopify admin while the human is logged in and watching |
+| `code` | You edit the frontend code in this repo (cookie banner, SEO) |
+| `human` | Only a person can: identity, money, DNS, legal sign-off, a real card |
+
+**Not applicable?** If a step does not apply to this shop (no cash on delivery, one language, Greece only), do not skip it silently. Ask the human, then record the reason: `pnpm shop-setup done <id> "n/a: <reason>"`. The final `go-live` step reads every n/a reason back to the owner.
+
 ## Intake first
 
 If `store-setup.config.json` is missing, ask the business decisions once with AskUserQuestion (concrete choices, trade-off in the description, commercial words not technical ones): stock tracking, shipping rates and free-shipping threshold, whether compare-at prices are real, reviews. Write the answers to `store-setup.config.json` (shape: `store-setup.config.example.json`). Tell the human which values the profile assumed (`pnpm shop-setup preflight --config-only` prints them).
@@ -41,4 +52,4 @@ Only while the human is logged into Shopify and watching. Never type a password,
 
 ## Done means
 
-`pnpm shop-setup status` all done, the test order placed and refunded, an invoice issued for it, and credentials rotated.
+`pnpm shop-setup status` shows every step done or marked n/a with a reason, the `go-live` step has been walked through with the owner, the test order was placed and refunded, an invoice was issued for it, and credentials were rotated. Anything marked "unverified" along the way is repeated back to the owner at the end.

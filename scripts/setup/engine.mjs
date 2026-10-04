@@ -1,4 +1,4 @@
-const AGENT_OWNERS = new Set(["api", "browser"]);
+const AGENT_OWNERS = new Set(["api", "browser", "code"]);
 
 /** What can move now. Humans get ONE step at a time; twelve at once gets three done. */
 export function nextActions(steps, state) {

@@ -37,3 +37,9 @@ test("validateSteps flags unknown needs, duplicates and cycles", () => {
   ];
   assert.match(validateSteps(cyc).join("\n"), /cycle/);
 });
+
+test("code steps (the agent edits the frontend) are agent work, not human work", () => {
+  const r = nextActions([{ id: "c", title: "C", owner: "code", needs: [] }], { done: {} });
+  assert.deepEqual(r.agent.map((s) => s.id), ["c"]);
+  assert.deepEqual(r.human, []);
+});
