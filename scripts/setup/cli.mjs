@@ -9,10 +9,12 @@ import { STEPS } from "./steps.mjs";
 import { loadState, markDone, saveState } from "./state.mjs";
 import { loadConfig } from "./config.mjs";
 import { applyShipping } from "./shipping.mjs";
-import { SCOPES, adminGraphQL, grantedScopes, missingScopes, servedVersion } from "../shopify/admin-client.mjs";
+import { adminGraphQL, allScopes, grantedScopes, missingScopes, resolveAdminToken, servedVersion } from "../shopify/admin-client.mjs";
+import { REDIRECT_PORT, redirectUri, runOAuth } from "../shopify/oauth.mjs";
+import { listWebhooks, registerWebhooks, webhookSecretStatus } from "../shopify/webhooks.mjs";
 import { loadSdkDocuments, validateDocuments } from "../shopify/validate-storefront.mjs";
 import { shopMismatches, versionStatus } from "../shopify/version.mjs";
-import { bad, heading, info, ok, shopifyEnv, warn } from "../shopify/env.mjs";
+import { bad, heading, info, mask, ok, shopifyEnv, upsertEnv, warn } from "../shopify/env.mjs";
 
 const STATE_FILE = "store-setup.state.json";
 const { command, args, flags } = parseArgs(process.argv.slice(2));
@@ -52,7 +54,7 @@ switch (command) {
     ok(`config valid (profile ${config.profile}, ${config.currency})`);
     if (flags["config-only"]) break;
     const granted = await grantedScopes();
-    const required = [...new Set([...SCOPES.shipping, ...SCOPES.policies])];
+    const required = allScopes();
     const missing = missingScopes(granted, required);
     if (missing.length) {
       bad(`missing scopes: ${missing.join(", ")}. Release a new app version, then reinstall.`);
@@ -124,6 +126,77 @@ switch (command) {
     if (!config.tracksInventory) warn("nothing is tracked: no product will ever show sold out. The owner must know this.");
     break;
   }
+  case "token": {
+    const env = shopifyEnv();
+    if (!env.domain) {
+      bad("SHOPIFY_STORE_DOMAIN is missing from .env.local");
+      process.exit(1);
+    }
+    let resolved;
+    try {
+      resolved = await resolveAdminToken();
+    } catch (error) {
+      bad(String(error.message ?? error));
+      process.exit(1);
+    }
+    const granted = await grantedScopes();
+    ok(`Admin token works: ${mask(resolved.token)} from ${resolved.source}`);
+    info(`scopes: ${granted.join(", ")}`);
+    if (resolved.source === "client credentials") info("minted for this run only (valid 24 hours), never written to disk");
+    break;
+  }
+  case "oauth": {
+    const env = shopifyEnv();
+    if (!env.domain || !env.clientId || !env.clientSecret) {
+      bad("needs SHOPIFY_STORE_DOMAIN, SHOPIFY_APP_CLIENT_ID and SHOPIFY_APP_CLIENT_SECRET in .env.local");
+      process.exit(1);
+    }
+    try {
+      const result = await runOAuth({
+        domain: env.domain,
+        clientId: env.clientId,
+        clientSecret: env.clientSecret,
+        scopes: allScopes(),
+        save: upsertEnv,
+        onReady: ({ authorizeUrl }) => {
+          info(`Listening on ${redirectUri(REDIRECT_PORT)}. Confirm that exact URL is an allowed redirection URL on the app.`);
+          info("Give the person this URL to open while logged into the store, then they click Install:");
+          console.log(`\n${authorizeUrl}\n`);
+        },
+      });
+      ok(`token saved to .env.local: ${mask(result.token)}`);
+      info(`granted: ${result.scope}`);
+      if (result.expiresIn) warn(`this token expires in ${result.expiresIn} seconds: it will stop working. Re-run when it does.`);
+    } catch (error) {
+      bad(String(error.message ?? error));
+      process.exit(1);
+    }
+    break;
+  }
+  case "webhooks": {
+    const env = shopifyEnv();
+    if (flags.list) {
+      const nodes = await listWebhooks();
+      info(`${nodes.length} registered`);
+      nodes.forEach((n) => info(`${n.topic.padEnd(24)} ${n.endpoint?.callbackUrl ?? "(not http)"}`));
+      break;
+    }
+    const siteUrl = typeof flags.url === "string" ? flags.url : env.siteUrl;
+    try {
+      const plan = await registerWebhooks({ siteUrl, dryRun: flags["dry-run"] === true });
+      info(`target ${plan.callbackUrl}`);
+      plan.remove.forEach((r) => warn(`remove stale ${r.topic} -> ${r.url}`));
+      plan.keep.forEach((t) => info(`= ${t} already registered`));
+      plan.create.forEach((t) => ok(`${flags["dry-run"] === true ? "would add" : "added"} ${t}`));
+    } catch (error) {
+      bad(String(error.message ?? error));
+      process.exit(1);
+    }
+    const secret = webhookSecretStatus({ clientSecret: env.clientSecret, webhookSecret: env.webhookSecret });
+    (secret.ok ? ok : bad)(secret.note);
+    if (!secret.ok) process.exit(1);
+    break;
+  }
   case "validate-queries": {
     const version = typeof flags.version === "string" ? flags.version : shopifyEnv().apiVersion;
     const results = await validateDocuments({ version, documents: loadSdkDocuments() });
@@ -138,6 +211,6 @@ switch (command) {
     process.exit(run.status ?? 1);
   }
   default:
-    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | validate-queries [--version=YYYY-MM] | e2e");
+    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e");
     process.exit(command ? 1 : 0);
 }

@@ -81,3 +81,13 @@ test("the SDK query check needs no credentials, starts immediately, and go-live 
   assert.match(byId["sdk-queries"].instructions, /pnpm shop-setup validate-queries/);
   assert.ok(byId["go-live"].needs.includes("sdk-queries"));
 });
+
+test("the admin connection steps name the commands, and the scopes cover every step that writes", () => {
+  assert.match(byId.oauth.instructions, /pnpm shop-setup token/);
+  assert.match(byId.oauth.instructions, /pnpm shop-setup oauth/);
+  assert.equal(byId.webhooks.automation, "webhooks");
+  assert.match(byId.webhooks.instructions, /pnpm shop-setup webhooks/);
+  for (const scope of ["write_shipping", "write_legal_policies", "write_products", "write_publications", "write_inventory", "read_locations"]) {
+    assert.match(byId["dev-app"].instructions, new RegExp(scope), `dev-app must list ${scope}`);
+  }
+});

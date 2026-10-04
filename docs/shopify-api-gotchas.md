@@ -57,6 +57,22 @@ The token lacks the scope. List what was granted:
 `GET https://<store>.myshopify.com/admin/oauth/access_scopes.json`. Scopes apply
 at install: add them, release a new app version, **and reinstall**.
 
+### "client credentials grant failed" / shop_not_permitted
+The grant only works when the app and the store belong to the same Shopify
+organization and the app is installed. A dev store created in the Dev Dashboard
+qualifies; a client's own store does not. Use `pnpm shop-setup oauth` for those.
+Tokens last 24 hours and `pnpm shop-setup` mints a fresh one per run, in memory.
+
+### OAuth callback: "hmac check failed" or "state mismatch"
+The callback is checked against the app client secret, the state nonce and the
+shop hostname. A failure means a stale URL (re-run for a fresh one), the wrong
+client secret in `.env.local`, or a callback that did not come from Shopify.
+The hmac is compared as a hex digest (unverified against a live store).
+
+### The OAuth response contains expires_in
+The token is an expiring one and will stop working. The CLI warns. Re-run oauth
+when it does.
+
 ## Visibility
 
 ### Admin shows products, the storefront shows none
@@ -67,6 +83,15 @@ does this; `catalogue-verify` proves it.
 ### Storefront API returns `null` for every metafield
 The definition lacks storefront visibility: `access: { storefront: "PUBLIC_READ" }`.
 The most common cause of an empty filter UI.
+
+### Every webhook delivery is a 401, or 503
+401: `SHOPIFY_WEBHOOK_SECRET` differs from the secret that signed the payload.
+Subscriptions created through the Admin API are signed with the app client
+secret, so set it equal to `SHOPIFY_APP_CLIENT_SECRET`, on the host too.
+503: the secret is not set at all. `/api/revalidate` refuses everything until it
+is (it used to accept unsigned requests). Shopify gives 5 seconds per delivery and
+deletes a subscription after 8 failed retries, so a site with a wrong secret
+quietly stops refreshing: re-run `pnpm shop-setup webhooks`.
 
 ## Writes
 

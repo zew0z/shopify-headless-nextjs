@@ -51,6 +51,8 @@ Only while the human is logged into Shopify and watching. Never type a password,
 - Tokens pasted into chat: tell the human once to rotate them.
 - Policies and legal text are drafted by you and approved by a person. Never publish unread.
 - Never invent reviews, "was" prices or testimonials.
+- Admin token: run `pnpm shop-setup token` before asking the human to click Install. It mints a token itself when the store is in the app's Shopify organization. Only fall back to `pnpm shop-setup oauth` when it fails.
+- Never mark `webhooks` done without the change-a-title test, and never leave `SHOPIFY_WEBHOOK_SECRET` unset on the host: the route refuses everything.
 - Introspect before changing a mutation: `node scripts/shopify/introspect.mjs <InputTypeName>`.
 - After touching `src/lib/shopify` or the Storefront API version, run `pnpm shop-setup validate-queries`. Every document must be valid; fix the SDK, not the store.
 - Shopify moves menus. If a path is gone, use the admin search box with the bold term, then fix `scripts/setup/steps.mjs`.

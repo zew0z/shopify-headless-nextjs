@@ -76,18 +76,19 @@ export const STEPS = [
   },
   {
     id: "dev-app",
-    title: "Create the Dev Dashboard app with the Admin scopes",
+    title: "Create the Dev Dashboard app with the Admin scopes and install it",
     owner: "browser",
     needs: ["store-basics"],
-    instructions: `Settings > Apps and sales channels > Develop apps > Build apps in Dev Dashboard. Scopes: write_shipping, read_locations, write_legal_policies (plus catalogue scopes when pushing products). Redirect URL exactly http://localhost:3456/callback. Release a new app version, then read Client ID and Client secret into .env.local (SHOPIFY_APP_CLIENT_ID, SHOPIFY_APP_CLIENT_SECRET). ${FALLBACK}`,
+    instructions: `Settings > Apps and sales channels > Develop apps > Build apps in Dev Dashboard. Scopes: write_shipping, read_locations, write_legal_policies, write_products, write_publications, write_inventory, write_files. Redirect URL exactly http://localhost:3456/callback (only needed for the OAuth fallback). Release a new app version, then install the app on the store from the Dev Dashboard (use its Install button; the exact clicks were not in Shopify's docs, so say what you see). Read Client ID and Client secret into .env.local (SHOPIFY_APP_CLIENT_ID, SHOPIFY_APP_CLIENT_SECRET). ${FALLBACK}`,
   },
   {
     id: "oauth",
-    title: "Click Install on the app once",
+    title: "Get the Admin token (the agent mints it, or one Install click)",
     owner: "human",
     needs: ["dev-app"],
     instructions:
-      "The agent prints an install URL; the person opens it and clicks Install. That mints the Admin token into .env.local. (The OAuth helper is ported in a follow-on plan; until then, mint the token through the Dev Dashboard install flow and paste it into .env.local as SHOPIFY_ADMIN_TOKEN.)",
+      "Do not ask the human yet. First run: pnpm shop-setup token. If it prints a working token (client credentials grant: works when the store is in the same Shopify organization as the app, such as a dev store made in the Dev Dashboard), mark this step done with the note \"n/a: client credentials worked\". If it fails, run pnpm shop-setup oauth: it prints a URL, and the person opens it while logged into the store and clicks Install. That writes SHOPIFY_ADMIN_TOKEN to .env.local.",
+    automation: "token",
   },
   {
     id: "hosting",
@@ -275,7 +276,9 @@ export const STEPS = [
     title: "Register cache-invalidation webhooks",
     owner: "api",
     needs: ["preflight", "hosting"],
-    instructions: "Follow-on plan. Needs a public https SITE_URL after the first deploy. Webhooks created by an app are signed with the app client secret, not the Notifications-page secret.",
+    instructions:
+      "Needs the public https SITE_URL from the hosting step. Run pnpm shop-setup webhooks --dry-run, show the plan, then pnpm shop-setup webhooks. Set SHOPIFY_WEBHOOK_SECRET to the app client secret locally and on the host (webhooks created by the app are signed with it) and redeploy. Prove it: change a product title in the Admin and reload the product page; it changes at once when the webhook works. /api/revalidate refuses every request while the secret is unset.",
+    automation: "webhooks",
   },
   {
     id: "test-order",
