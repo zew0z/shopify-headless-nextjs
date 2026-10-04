@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "./args.mjs";
 import { nextActions } from "./engine.mjs";
@@ -75,7 +76,12 @@ switch (command) {
     await applyShipping({ config: loadConfig(), dryRun: flags["dry-run"] === true, locationId: flags.location });
     break;
   }
+  case "e2e": {
+    const run = spawnSync("pnpm", ["exec", "playwright", "test"], { stdio: "inherit" });
+    if (run.status === 0) info("Skipped tests are not passes. Check the output above for skips before marking this step done.");
+    process.exit(run.status ?? 1);
+  }
   default:
-    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>]");
+    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | e2e");
     process.exit(command ? 1 : 0);
 }
