@@ -30,6 +30,10 @@ Do not ask for two human things at once. Do not ask anything the questionnaire a
 
 **Not applicable?** If a step does not apply to this shop (no cash on delivery, one language, Greece only), do not skip it silently. Ask the human, then record the reason: `pnpm shop-setup done <id> "n/a: <reason>"`. The final `go-live` step reads every n/a reason back to the owner.
 
+## Catalogue
+
+Read `docs/catalogue-import.md` first, then follow the `catalogue` step in the registry. Report real counts from the feed to the owner before choosing variant grouping or filters. `catalogue-verify` is the only proof the products arrived; the Admin API saying they exist is not. If it reports a mismatch, fix the source module or the publishing, never edit the store by hand to match. `docs/shopify-api-gotchas.md` has the exact error text for every trap met so far; add new ones with the exact message.
+
 ## Intake first
 
 If `store-setup.config.json` is missing, ask the business decisions once with AskUserQuestion (concrete choices, trade-off in the description, commercial words not technical ones): stock tracking, shipping rates and free-shipping threshold, whether compare-at prices are real, reviews. Write the answers to `store-setup.config.json` (shape: `store-setup.config.example.json`). Tell the human which values the profile assumed (`pnpm shop-setup preflight --config-only` prints them).

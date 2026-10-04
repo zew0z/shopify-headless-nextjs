@@ -51,3 +51,23 @@ test("no sources is an error, not an empty catalogue", async () => {
   assert.equal(result.ok, false);
   assert.match(result.problems[0], /no source modules/);
 });
+
+import { readCatalogFile } from "./build.mjs";
+
+test("readCatalogFile explains a missing file instead of throwing", async () => {
+  const { outFile } = await setup({});
+  const result = readCatalogFile(outFile);
+  assert.equal(result.ok, false);
+  assert.match(result.problem, /not found/);
+  assert.match(result.problem, /catalogue-build/);
+});
+
+test("readCatalogFile returns arrays even when a key is absent, and explains broken JSON", async () => {
+  const { outFile } = await setup({});
+  writeFileSync(outFile, JSON.stringify({ products: [{ handle: "a" }] }));
+  assert.deepEqual(readCatalogFile(outFile).catalog, { collections: [], products: [{ handle: "a" }] });
+  writeFileSync(outFile, "{ not json");
+  const broken = readCatalogFile(outFile);
+  assert.equal(broken.ok, false);
+  assert.match(broken.problem, /not valid JSON/);
+});

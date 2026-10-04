@@ -110,7 +110,8 @@ export const STEPS = [
     owner: "api",
     needs: ["preflight", "intake"],
     instructions:
-      "Follow-on plan: push products through the Admin API, keyed on handle so a re-run updates instead of duplicating, and publish them to the Headless channel. Until then the human can add products in the Admin or use Products > Import, but they must be published to the Headless channel or the storefront shows nothing.",
+      "Write a source module for this client (copy scripts/catalogue/sources/_template.mjs; read docs/catalogue-import.md first and report real counts to the owner before deciding variant grouping). Then: pnpm shop-setup catalogue-build, pnpm shop-setup catalogue --dry-run, pnpm shop-setup catalogue --limit=3 and look at them in the Admin, pnpm shop-setup catalogue, then pnpm shop-setup catalogue-verify. A re-run updates, never duplicates. Mark done only when catalogue-verify reports no problems.",
+    automation: "catalogue",
   },
   {
     id: "inventory",
@@ -118,7 +119,8 @@ export const STEPS = [
     owner: "api",
     needs: ["catalogue", "intake"],
     instructions:
-      "Follow-on plan. Apply config.tracksInventory with inventoryItemUpdate (tracked true or false, scope write_inventory). If tracked, the human must enter real stock counts per product in the Admin; if not tracked, tell the owner out loud that nothing will ever show sold out. Never leave this on a silent default.",
+      "The push applies config.tracksInventory to every variant. If tracked, the owner must supply real quantities in the source data. Run pnpm shop-setup inventory-check to read the flags back from Shopify. If not tracked, tell the owner out loud that nothing will ever show sold out.",
+    automation: "inventory-check",
   },
   {
     id: "courier",

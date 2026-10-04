@@ -1,6 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "./args.mjs";
+import { buildCatalogue, readCatalogFile } from "../catalogue/build.mjs";
+import { fetchVariantTracking, inventoryMismatches } from "../catalogue/inventory.mjs";
+import { pushCatalogue } from "../catalogue/push.mjs";
+import { compareToCatalogue, fetchStorefront, summarise } from "../catalogue/verify.mjs";
 import { nextActions } from "./engine.mjs";
 import { STEPS } from "./steps.mjs";
 import { loadState, markDone, saveState } from "./state.mjs";
@@ -68,12 +71,64 @@ switch (command) {
     await applyShipping({ config: loadConfig(), dryRun: flags["dry-run"] === true, locationId: flags.location });
     break;
   }
+  case "catalogue-build": {
+    const result = await buildCatalogue({ config: loadConfig() });
+    if (!result.ok) {
+      result.problems.slice(0, 40).forEach((p) => bad(p));
+      process.exit(1);
+    }
+    ok(`wrote data/catalog.json: ${result.catalog.collections.length} collections, ${result.catalog.products.length} products, ${result.catalog.products.reduce((n, p) => n + p.variants.length, 0)} variants`);
+    break;
+  }
+  case "catalogue": {
+    const { ok: found, catalog, problem } = readCatalogFile();
+    if (!found) {
+      bad(problem);
+      process.exit(1);
+    }
+    await pushCatalogue({
+      config: loadConfig(),
+      catalog,
+      dryRun: flags["dry-run"] === true,
+      limit: flags.limit ? Number(flags.limit) : undefined,
+      only: flags.only,
+      skipImages: flags["skip-images"] === true,
+      locationId: flags.location,
+    });
+    break;
+  }
+  case "catalogue-verify": {
+    const { ok: found, catalog, problem } = readCatalogFile();
+    if (!found) {
+      bad(problem);
+      process.exit(1);
+    }
+    const seen = await fetchStorefront();
+    const summary = summarise(seen.products, seen.collections);
+    info(`storefront serves ${summary.products} products, ${summary.variants} variants, ${summary.collections} collections, ${summary.withImage} with an image`);
+    const version = versionStatus(shopifyEnv().apiVersion, seen.served);
+    (version.ok ? ok : warn)(version.note);
+    const problems = compareToCatalogue({ handles: seen.products.map((p) => p.handle), summary }, catalog);
+    problems.forEach((p) => bad(p));
+    if (problems.length) process.exit(1);
+    ok("the storefront serves what was pushed");
+    break;
+  }
+  case "inventory-check": {
+    const config = loadConfig();
+    const problems = inventoryMismatches(await fetchVariantTracking(), config.tracksInventory);
+    problems.forEach((p) => bad(p));
+    if (problems.length) process.exit(1);
+    ok(`stock tracking matches the config (tracksInventory=${config.tracksInventory})`);
+    if (!config.tracksInventory) warn("nothing is tracked: no product will ever show sold out. The owner must know this.");
+    break;
+  }
   case "e2e": {
     const run = spawnSync("pnpm", ["exec", "playwright", "test"], { stdio: "inherit" });
     if (run.status === 0) info("Skipped tests are not passes. Check the output above for skips before marking this step done.");
     process.exit(run.status ?? 1);
   }
   default:
-    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | e2e");
+    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | e2e");
     process.exit(command ? 1 : 0);
 }

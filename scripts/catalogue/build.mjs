@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { validateCatalog } from "./format.mjs";
@@ -38,4 +38,15 @@ export async function buildCatalogue({ config, sourcesDir = SOURCES_DIR, outFile
   mkdirSync(path.dirname(outFile), { recursive: true });
   writeFileSync(outFile, `${JSON.stringify(catalog, null, 2)}\n`);
   return { ok: true, problems: [], catalog };
+}
+
+/** Reads data/catalog.json without ever throwing a stack trace at the agent. */
+export function readCatalogFile(file = CATALOG_FILE) {
+  if (!existsSync(file)) return { ok: false, catalog: null, problem: `${path.relative(process.cwd(), file)} not found. Run: pnpm shop-setup catalogue-build` };
+  try {
+    const raw = JSON.parse(readFileSync(file, "utf8"));
+    return { ok: true, catalog: { collections: raw.collections ?? [], products: raw.products ?? [] }, problem: null };
+  } catch {
+    return { ok: false, catalog: null, problem: `${path.relative(process.cwd(), file)} is not valid JSON. Re-run: pnpm shop-setup catalogue-build` };
+  }
 }

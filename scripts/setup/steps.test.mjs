@@ -66,3 +66,10 @@ test("webhooks and the browser run need a deployed site", () => {
   assert.ok(byId.webhooks.needs.includes("hosting"));
   assert.ok(byId.e2e.needs.includes("hosting"));
 });
+
+test("catalogue and inventory name the commands that do them", () => {
+  assert.equal(byId.catalogue.automation, "catalogue");
+  assert.match(byId.catalogue.instructions, /pnpm shop-setup catalogue-build/);
+  assert.match(byId.catalogue.instructions, /catalogue-verify/);
+  assert.equal(byId.inventory.automation, "inventory-check");
+});
