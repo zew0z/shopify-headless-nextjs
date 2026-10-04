@@ -33,3 +33,7 @@ test("mask never prints a whole token", () => {
   assert.equal(mask(""), "-");
   assert.ok(!mask("shpat_abcdefghijklmnop").includes("abcdefghijkl"));
 });
+
+test("the default API version is one Shopify still supports", () => {
+  assert.equal(shopifyEnv({}).apiVersion, "2026-07");
+});

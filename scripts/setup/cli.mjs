@@ -6,8 +6,9 @@ import { STEPS } from "./steps.mjs";
 import { loadState, markDone, saveState } from "./state.mjs";
 import { validateConfig } from "./intake.mjs";
 import { applyShipping } from "./shipping.mjs";
-import { SCOPES, grantedScopes, missingScopes } from "../shopify/admin-client.mjs";
-import { bad, heading, info, ok, warn } from "../shopify/env.mjs";
+import { SCOPES, adminGraphQL, grantedScopes, missingScopes, servedVersion } from "../shopify/admin-client.mjs";
+import { shopMismatches, versionStatus } from "../shopify/version.mjs";
+import { bad, heading, info, ok, shopifyEnv, warn } from "../shopify/env.mjs";
 
 const STATE_FILE = "store-setup.state.json";
 const CONFIG_FILE = "store-setup.config.json";
@@ -70,6 +71,13 @@ switch (command) {
       process.exit(1);
     }
     ok(`admin token has: ${required.join(", ")}`);
+    const shop = (await adminGraphQL("{ shop { name currencyCode taxesIncluded } }")).shop;
+    ok(`shop ${shop.name}: ${shop.currencyCode}, taxesIncluded ${shop.taxesIncluded}`);
+    const version = versionStatus(shopifyEnv().apiVersion, servedVersion());
+    (version.ok ? ok : warn)(version.note);
+    const mismatches = shopMismatches(shop, config);
+    mismatches.forEach((m) => bad(m));
+    if (mismatches.length) process.exit(1);
     break;
   }
   case "shipping": {

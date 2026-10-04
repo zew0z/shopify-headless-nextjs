@@ -49,6 +49,10 @@ export function collectUserErrors(node, found = []) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+let served = null;
+/** The API version Shopify actually used for the most recent Admin call. */
+export const servedVersion = () => served;
+
 export async function adminGraphQL(query, variables = {}, attempt = 0) {
   const { domain, adminToken, apiVersion } = adminConfig();
   const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
@@ -56,6 +60,7 @@ export async function adminGraphQL(query, variables = {}, attempt = 0) {
     headers: { "X-Shopify-Access-Token": adminToken, "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),
   });
+  served = response.headers.get("x-shopify-api-version") ?? served;
 
   if ((response.status === 429 || response.status >= 500) && attempt < 5) {
     await sleep(2 ** attempt * 1000);
@@ -89,4 +94,12 @@ export async function grantedScopes() {
   });
   if (!response.ok) throw new Error(`access_scopes HTTP ${response.status}: ${(await response.text()).slice(0, 200)}`);
   return (await response.json()).access_scopes.map((scope) => scope.handle);
+}
+
+export const PUBLICATIONS_QUERY = `query { publications(first: 25) { nodes { id name } } }`;
+
+/** Every sales channel the store can publish to, including Headless. */
+export async function publicationInputs() {
+  const nodes = (await adminGraphQL(PUBLICATIONS_QUERY)).publications.nodes;
+  return { nodes, input: nodes.map((publication) => ({ publicationId: publication.id })) };
 }

@@ -15,7 +15,7 @@ const ROOT = process.cwd();
 export const ENV_PATH = path.join(ROOT, ".env.local");
 const ENV_FILES = [path.join(ROOT, ".env"), ENV_PATH];
 
-export const API_VERSION_DEFAULT = "2025-07";
+export const API_VERSION_DEFAULT = "2026-07";
 
 export function parseEnv(text) {
   const env = {};
