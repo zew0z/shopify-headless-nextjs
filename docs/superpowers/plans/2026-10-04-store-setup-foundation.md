@@ -89,7 +89,7 @@ package.json                          modify: scripts
 In `package.json` `"scripts"` add:
 
 ```json
-"test:scripts": "node --test scripts/",
+"test:scripts": "node --test \"scripts/**/*.test.mjs\" \"e2e/**/*.test.mjs\"",
 "setup": "node scripts/setup/cli.mjs"
 ```
 

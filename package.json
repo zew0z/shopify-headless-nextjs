@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:scripts": "node --test \"scripts/**/*.test.mjs\" \"e2e/**/*.test.mjs\"",
+    "setup": "node scripts/setup/cli.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.41.0",
