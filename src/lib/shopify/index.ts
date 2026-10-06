@@ -50,6 +50,28 @@ export * from "./client";
 export * from "./queries";
 export * from "./mutations";
 
+/**
+ * Catalogue reads are shared by every visitor, so they live in the Next.js data
+ * cache and are purged by tag from /api/revalidate when Shopify sends a webhook.
+ */
+const CATALOGUE_CACHE: RequestCache = "force-cache";
+
+/**
+ * Mock products are a development convenience only. A production build without
+ * Shopify settings throws, so it fails loudly instead of selling fake products.
+ * Once Shopify is configured, its errors are thrown too, never replaced by mocks.
+ */
+function mockCatalogueAllowed(): boolean {
+  if (isShopifyConfigured) return false;
+  if (process.env.NODE_ENV === "production") {
+    throw new ShopifyError(
+      "Shopify is not configured: set NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN and NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN. Mock products are never served in production.",
+      500
+    );
+  }
+  return true;
+}
+
 // -------------------------------------------------------------
 // Connection & Health Operations
 // -------------------------------------------------------------
@@ -138,7 +160,7 @@ export async function checkShopifyConnection(): Promise<ConnectionHealthCheck> {
  * const products = await getProducts({ limit: 12, sortKey: "PRICE", reverse: true });
  */
 export async function getProducts(options?: GetProductsOptions): Promise<Product[]> {
-  if (!isShopifyConfigured) {
+  if (mockCatalogueAllowed()) {
     if (options?.query) {
       const q = options.query.toLowerCase();
       return MOCK_PRODUCTS.filter(
@@ -151,30 +173,25 @@ export async function getProducts(options?: GetProductsOptions): Promise<Product
     return MOCK_PRODUCTS.slice(0, options?.limit || 20);
   }
 
-  try {
-    const res = await shopifyFetch<{
-      products: {
-        edges: Array<{ node: Product }>;
-      };
-    }>({
-      query: getProductsQuery,
-      variables: {
-        first: options?.limit || 20,
-        after: options?.cursor,
-        query: options?.query,
-        sortKey: options?.sortKey || "RELEVANCE",
-        reverse: options?.reverse || false,
-      },
-      cache: options?.cache ?? "no-store",
-      tags: ["products"],
-      revalidate: options?.revalidate,
-    });
+  const res = await shopifyFetch<{
+    products: {
+      edges: Array<{ node: Product }>;
+    };
+  }>({
+    query: getProductsQuery,
+    variables: {
+      first: options?.limit || 20,
+      after: options?.cursor,
+      query: options?.query,
+      sortKey: options?.sortKey || "RELEVANCE",
+      reverse: options?.reverse || false,
+    },
+    cache: options?.cache ?? CATALOGUE_CACHE,
+    tags: ["products"],
+    revalidate: options?.revalidate,
+  });
 
-    return res.body.data?.products.edges.map((e) => e.node) || [];
-  } catch (err) {
-    console.warn("[Shopify SDK] getProducts fallback to mock:", err);
-    return MOCK_PRODUCTS;
-  }
+  return res.body.data?.products.edges.map((e) => e.node) || [];
 }
 
 /**
@@ -187,26 +204,21 @@ export async function getProduct(
   handle: string,
   options?: { cache?: RequestCache; revalidate?: number }
 ): Promise<Product | null> {
-  if (!isShopifyConfigured) {
+  if (mockCatalogueAllowed()) {
     return MOCK_PRODUCTS.find((p) => p.handle === handle) || null;
   }
 
-  try {
-    const res = await shopifyFetch<{
-      product: Product | null;
-    }>({
-      query: getProductByHandleQuery,
-      variables: { handle },
-      cache: options?.cache ?? "no-store",
-      tags: ["products", `product-${handle}`],
-      revalidate: options?.revalidate,
-    });
+  const res = await shopifyFetch<{
+    product: Product | null;
+  }>({
+    query: getProductByHandleQuery,
+    variables: { handle },
+    cache: options?.cache ?? CATALOGUE_CACHE,
+    tags: ["products", `product-${handle}`],
+    revalidate: options?.revalidate,
+  });
 
-    return res.body.data?.product || null;
-  } catch (err) {
-    console.warn(`[Shopify SDK] getProduct("${handle}") fallback:`, err);
-    return MOCK_PRODUCTS.find((p) => p.handle === handle) || null;
-  }
+  return res.body.data?.product || null;
 }
 
 /**
@@ -216,25 +228,20 @@ export async function getProduct(
  * const recommendations = await getProductRecommendations("gid://shopify/Product/12345");
  */
 export async function getProductRecommendations(productId: string): Promise<Product[]> {
-  if (!isShopifyConfigured) {
+  if (mockCatalogueAllowed()) {
     return MOCK_PRODUCTS.slice(0, 4);
   }
 
-  try {
-    const res = await shopifyFetch<{
-      productRecommendations: Product[];
-    }>({
-      query: getProductRecommendationsQuery,
-      variables: { productId },
-      cache: "no-store",
-      tags: ["products", `product-rec-${productId}`],
-    });
+  const res = await shopifyFetch<{
+    productRecommendations: Product[];
+  }>({
+    query: getProductRecommendationsQuery,
+    variables: { productId },
+    cache: CATALOGUE_CACHE,
+    tags: ["products", `product-rec-${productId}`],
+  });
 
-    return res.body.data?.productRecommendations || [];
-  } catch (err) {
-    console.warn(`[Shopify SDK] getProductRecommendations("${productId}") fallback:`, err);
-    return MOCK_PRODUCTS.slice(0, 4);
-  }
+  return res.body.data?.productRecommendations || [];
 }
 
 /**
@@ -307,91 +314,76 @@ export async function predictiveSearch(
  * const collections = await getCollections({ limit: 10 });
  */
 export async function getCollections(options?: { limit?: number; cursor?: string }): Promise<Collection[]> {
-  if (!isShopifyConfigured) {
+  if (mockCatalogueAllowed()) {
     return MOCK_COLLECTIONS.slice(0, options?.limit || 10);
   }
 
-  try {
-    const res = await shopifyFetch<{
-      collections: {
-        edges: Array<{ node: Collection }>;
-      };
-    }>({
-      query: getCollectionsQuery,
-      variables: {
-        first: options?.limit || 20,
-        after: options?.cursor,
-      },
-      cache: "no-store",
-      tags: ["collections"],
-    });
+  const res = await shopifyFetch<{
+    collections: {
+      edges: Array<{ node: Collection }>;
+    };
+  }>({
+    query: getCollectionsQuery,
+    variables: {
+      first: options?.limit || 20,
+      after: options?.cursor,
+    },
+    cache: CATALOGUE_CACHE,
+    tags: ["collections"],
+  });
 
-    return res.body.data?.collections.edges.map((e) => e.node) || [];
-  } catch (err) {
-    console.warn("[Shopify SDK] getCollections fallback:", err);
-    return MOCK_COLLECTIONS;
-  }
+  return res.body.data?.collections.edges.map((e) => e.node) || [];
 }
 
 /**
  * Fetches a single collection by handle.
  */
 export async function getCollection(handle: string): Promise<Collection | null> {
-  if (!isShopifyConfigured) {
+  if (mockCatalogueAllowed()) {
     return MOCK_COLLECTIONS.find((c) => c.handle === handle) || null;
   }
 
-  try {
-    const res = await shopifyFetch<{
-      collection: Collection | null;
-    }>({
-      query: getCollectionByHandleQuery,
-      variables: { handle },
-      cache: "no-store",
-      tags: ["collections", `collection-${handle}`],
-    });
+  const res = await shopifyFetch<{
+    collection: Collection | null;
+  }>({
+    query: getCollectionByHandleQuery,
+    variables: { handle },
+    cache: CATALOGUE_CACHE,
+    tags: ["collections", `collection-${handle}`],
+  });
 
-    return res.body.data?.collection || null;
-  } catch (err) {
-    console.warn(`[Shopify SDK] getCollection("${handle}") fallback:`, err);
-    return MOCK_COLLECTIONS.find((c) => c.handle === handle) || null;
-  }
+  return res.body.data?.collection || null;
 }
 
 /**
  * Fetches products belonging to a collection by handle.
  */
 export async function getCollectionProducts(options: GetCollectionProductsOptions): Promise<Product[]> {
-  if (!isShopifyConfigured) {
+  if (mockCatalogueAllowed()) {
     return MOCK_PRODUCTS;
   }
 
-  try {
-    const res = await shopifyFetch<{
-      collection: {
-        products: {
-          edges: Array<{ node: Product }>;
-        };
-      } | null;
-    }>({
-      query: getCollectionProductsQuery,
-      variables: {
-        handle: options.handle,
-        first: options.limit || 20,
-        after: options.cursor,
-        sortKey: options.sortKey || "COLLECTION_DEFAULT",
-        reverse: options.reverse || false,
-      },
-      cache: options.cache ?? "no-store",
-      tags: ["collections", `collection-${options.handle}`, "products"],
-      revalidate: options.revalidate,
-    });
+  const res = await shopifyFetch<{
+    collection: {
+      products: {
+        edges: Array<{ node: Product }>;
+      };
+    } | null;
+  }>({
+    query: getCollectionProductsQuery,
+    variables: {
+      handle: options.handle,
+      first: options.limit || 20,
+      after: options.cursor,
+      sortKey: options.sortKey || "COLLECTION_DEFAULT",
+      reverse: options.reverse || false,
+    },
+    cache: options.cache ?? CATALOGUE_CACHE,
+    tags: ["collections", `collection-${options.handle}`, "products"],
+    revalidate: options.revalidate,
+  });
 
-    return res.body.data?.collection?.products.edges.map((e) => e.node) || [];
-  } catch (err) {
-    console.warn(`[Shopify SDK] getCollectionProducts("${options.handle}") fallback:`, err);
-    return MOCK_PRODUCTS;
-  }
+  return res.body.data?.collection?.products.edges.map((e) => e.node) || [];
 }
 
 // -------------------------------------------------------------

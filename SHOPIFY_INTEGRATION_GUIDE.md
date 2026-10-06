@@ -23,7 +23,7 @@ src/
         ├── client.ts             # Fetch client with rate limiting & retries
         ├── config.ts             # Env sanitation & validation
         ├── index.ts              # Public SDK functions (getProducts, cart, etc.)
-        ├── mock-data.ts          # Offline fallback catalog
+        ├── mock-data.ts          # Dev-only catalog when Shopify is not configured (never in production)
         ├── mutations.ts          # Storefront GraphQL mutations
         ├── queries.ts            # Storefront GraphQL queries & fragments
         └── types.ts              # 100% strict TypeScript types
@@ -186,6 +186,10 @@ revalidateTag("products");
 revalidateTag(`product-${payload.handle}`);
 ```
 The updated product appears on the frontend instantly.
+
+This only works while catalogue reads are cached. The SDK caches `getProducts`, `getProduct`, `getProductRecommendations`, `getCollections`, `getCollection` and `getCollectionProducts` (`cache: "force-cache"`, tagged) and leaves the cart uncached. A page that sets `export const dynamic = "force-dynamic"` or `fetchCache = "force-no-store"`, or passes `cache: "no-store"`, fetches on every request: the purge has nothing to clear, and the change-a-title test passes without proving the webhook works. When wiring a frontend you received, search it for these first.
+
+If Shopify fails, the catalogue functions throw. They never substitute mock products: those appear only in development when Shopify is not configured, and a production server without the settings returns an error page.
 
 ---
 

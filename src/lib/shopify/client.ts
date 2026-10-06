@@ -69,9 +69,11 @@ export async function shopifyFetch<T>({
     reqHeaders["X-Shopify-Storefront-Access-Token"] = shopifyConfig.publicAccessToken;
   }
 
-  // Forward client Buyer IP to prevent SSR server throttling
+  // Forward client Buyer IP to prevent SSR server throttling. Not for cached reads:
+  // Next.js puts request headers in the fetch cache key, so a per-visitor IP would
+  // give every visitor their own cache entry (and calling headers() makes the page dynamic).
   let clientIp = buyerIp;
-  if (!clientIp) {
+  if (!clientIp && cache !== "force-cache") {
     try {
       const headerList = await headers();
       const forwardedFor = headerList.get("x-forwarded-for");

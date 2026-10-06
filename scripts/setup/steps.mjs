@@ -277,7 +277,7 @@ export const STEPS = [
     owner: "api",
     needs: ["preflight", "hosting"],
     instructions:
-      "Needs the public https SITE_URL from the hosting step. Run pnpm shop-setup webhooks --dry-run, show the plan, then pnpm shop-setup webhooks. Set SHOPIFY_WEBHOOK_SECRET to the app client secret locally and on the host (webhooks created by the app are signed with it) and redeploy. Prove it: change a product title in the Admin and reload the product page; it changes at once when the webhook works. /api/revalidate refuses every request while the secret is unset.",
+      "Needs the public https SITE_URL from the hosting step. Run pnpm shop-setup webhooks --dry-run, show the plan, then pnpm shop-setup webhooks. Set SHOPIFY_WEBHOOK_SECRET to the app client secret locally and on the host (webhooks created by the app are signed with it) and redeploy. Prove it: first check the frontend does not switch caching off (search it for force-dynamic, force-no-store and cache: \"no-store\" on catalogue reads; with caching off every reload is fresh and the test proves nothing), then change a product title in the Admin and reload the product page; it changes at once when the webhook works. /api/revalidate refuses every request while the secret is unset.",
     automation: "webhooks",
   },
   {
