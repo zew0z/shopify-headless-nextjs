@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { findSdkDir } from "../shopify/sdk-dir.mjs";
 import { auditFrontend, isKitRoute } from "./audit.mjs";
-import { importsFile } from "./sources.mjs";
 import { listSourceFiles } from "./walk.mjs";
 
 const CATALOGUE_CALL = /\b(getProducts?|getCollections?|getCollectionProducts|getProductRecommendations)\s*\(/;
@@ -21,16 +20,7 @@ export function checkWiring(dir) {
   const appRoot = audit.stack.appRoot ?? "";
   const installed = Boolean(findSdkDir(dir)) && existsSync(path.join(dir, `${appRoot}app/api/cart/route.ts`));
 
-  const dataFiles = [...new Set(audit.productData.map((d) => d.file))];
-  const dataImports = [];
-  for (const file of files) {
-    if (dataFiles.includes(file)) continue;
-    text[file].split("\n").forEach((line, i) => {
-      const spec = /\bfrom\s+["']([^"']+)["']/.exec(line)?.[1];
-      const data = spec && dataFiles.find((d) => importsFile(file, spec, d));
-      if (data) dataImports.push(`${file}:${i + 1} imports ${data}`);
-    });
-  }
+  const dataImports = audit.dataReaders.map((r) => `${r.file}:${r.line} imports ${r.target}`);
 
   const uncached = audit.cachingOff
     .filter((c) => LAYOUT.test(c.file) || CATALOGUE_CALL.test(text[c.file] ?? ""))

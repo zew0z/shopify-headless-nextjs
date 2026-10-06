@@ -111,3 +111,18 @@ export function findFakeApis(dir, files, productData = findProductData(dir, file
   }
   return found;
 }
+
+/** Every import of a hardcoded product file: the places the wiring has to change. */
+export function findDataReaders(dir, files, productData) {
+  const dataFiles = [...new Set(productData.map((d) => d.file))];
+  const found = [];
+  for (const file of files) {
+    if (dataFiles.includes(file)) continue;
+    read(dir, file).split("\n").forEach((text, i) => {
+      const spec = /\bfrom\s+["']([^"']+)["']/.exec(text)?.[1];
+      const target = spec && dataFiles.find((d) => importsFile(file, spec, d));
+      if (target) found.push({ file, line: i + 1, target });
+    });
+  }
+  return found;
+}

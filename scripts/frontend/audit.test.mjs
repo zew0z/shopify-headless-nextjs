@@ -90,6 +90,7 @@ test("a typical received frontend is described in one audit", () => {
   assert.equal(audit.stack.appRoot, "src/");
   assert.deepEqual(audit.productData, [{ file: "src/data/products.ts", line: 1, kind: "array", count: 4 }]);
   assert.deepEqual(audit.fakeApis, []);
+  assert.deepEqual(audit.dataReaders, [{ file: "src/app/page.tsx", line: 1, target: "src/data/products.ts" }]);
   assert.equal(audit.cart.files.length, 2);
   assert.equal(audit.cart.checkoutButtons.length, 1);
   assert.deepEqual(audit.cachingOff, [{ file: "src/app/page.tsx", line: 2, what: 'dynamic = "force-dynamic"' }]);
@@ -101,6 +102,7 @@ test("the summary leads with whether the kit fits and gives counts with places",
   assert.match(lines[0], /^Kit fits: Next\.js 16/);
   assert.ok(lines.some((l) => /4 hardcoded products in 1 place/.test(l)));
   assert.ok(lines.some((l) => l.includes("src/data/products.ts:1")));
+  assert.ok(lines.some((l) => /read by src\/app\/page\.tsx:1/.test(l)), "the summary must say which files read the products");
   const stopped = summariseAudit(auditFrontend(makeFixture({ "package.json": { devDependencies: { vite: "7" } } })));
   assert.match(stopped[0], /^Stop: Built with vite/);
 });

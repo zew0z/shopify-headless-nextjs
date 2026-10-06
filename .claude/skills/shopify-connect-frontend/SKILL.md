@@ -25,5 +25,5 @@ Steps `frontend-audit` → `kit-install` → `frontend-catalogue` → `frontend-
 - Never call the SDK from a `"use client"` file; move the read to a server parent.
 - Never catch a Shopify error and show something else in its place. Errors reach `error.tsx`.
 - Ask before deleting their old data files, fake API routes or a fake checkout page.
-- If the frontend needs the store's products before the store has them, use a development store, or run the `catalogue` step first. The kit's mock products show only in development without Shopify settings; they prove the wiring compiles, not that it works.
+- No store with products yet? Wire and click through against mock.shop first (`docs/frontend-wiring.md`, "No development store yet"): real Shopify responses, a real cart and checkout link. Sign-off still needs the development store. The kit's own mock products (development, no Shopify settings) only prove the code compiles.
 - Say "unverified" for anything not clicked through against a real (development) store.

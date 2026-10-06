@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { detectStack } from "./stack.mjs";
-import { findFakeApis, findProductData } from "./sources.mjs";
+import { findDataReaders, findFakeApis, findProductData } from "./sources.mjs";
 import { listSourceFiles } from "./walk.mjs";
 
 const read = (dir, file) => readFileSync(path.join(dir, file), "utf8");
@@ -92,6 +92,7 @@ export function auditFrontend(dir) {
   return {
     stack,
     productData,
+    dataReaders: findDataReaders(dir, files, productData),
     fakeApis: findFakeApis(dir, files, productData),
     cart: findCart(dir, files),
     cachingOff: findCachingOff(dir, files),
@@ -103,12 +104,16 @@ const places = (n) => `${n} place${n === 1 ? "" : "s"}`;
 
 /** The audit in plain words, most important line first. */
 export function summariseAudit(audit) {
-  const { stack, productData, fakeApis, cart, cachingOff, images } = audit;
+  const { stack, productData, dataReaders, fakeApis, cart, cachingOff, images } = audit;
   const lines = [stack.supported ? `Kit fits: ${stack.reason}` : `Stop: ${stack.reason}`];
   const total = productData.reduce((sum, d) => sum + d.count, 0);
   if (productData.length) {
     lines.push(`${total} hardcoded products in ${places(productData.length)}:`);
-    for (const d of productData) lines.push(`  ${d.file}:${d.line} (${d.count})`);
+    for (const d of productData) {
+      lines.push(`  ${d.file}:${d.line} (${d.count})`);
+      const readers = dataReaders.filter((r) => r.target === d.file).map((r) => `${r.file}:${r.line}`);
+      lines.push(readers.length ? `    read by ${readers.join(", ")}` : "    read by nothing");
+    }
   } else lines.push("No hardcoded product lists found.");
   if (fakeApis.length) {
     lines.push(`${fakeApis.length} fake product API call${fakeApis.length === 1 ? "" : "s"} or route${fakeApis.length === 1 ? "" : "s"}:`);

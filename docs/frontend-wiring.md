@@ -36,6 +36,7 @@ export function toCardProduct(p: Product): CardProduct {
 
 - **Money:** Shopify sends amounts as strings (`"49.00"`). Convert where their type wants a number, and format with the currency code, not a hardcoded `€`.
 - **Ids in URLs:** if their routes are `/products/[id]` with numeric ids, switch the param to the handle and fetch with `getProduct(handle)`. Keep the route path itself unless the owner agrees to change URLs.
+- **Changing their type breaks their old data file.** Once `id` becomes the handle (or a field becomes optional), the hardcoded product file stops compiling even though nothing imports it any more. That is the moment to ask the owner whether it can go: it stays in git history. Do not loosen the type to keep dead data compiling.
 - **Fields Shopify does not have** (ratings, review counts, "bestseller" badges, a was-price when `compareAtPrice` is empty): do not invent them. Hide that bit of UI when the value is missing, and list each one for the owner with the question "where should this come from?" (metafields, a reviews app, or remove it).
 
 ### 3. Read in server components
@@ -125,6 +126,18 @@ export async function addToCart(variantId: string, quantity = 1) {
 ### Variants
 
 Every add needs a **variant id** (`gid://shopify/ProductVariant/...`). A product with one variant: use `variants.edges[0].node.id`. Several variants (size, colour): use their picker if the design has one, and find the variant whose `selectedOptions` match the picked values. No picker in the design: ask the owner before adding one.
+
+## No development store yet? Practise on mock.shop
+
+[mock.shop](https://mock.shop) is Shopify's public demo Storefront API. It answers the same requests as a real store and needs no token, so it proves the wiring against real Shopify responses (products, images from `cdn.shopify.com`, a real cart and a `checkoutUrl`) before the owner's store exists:
+
+```env
+# .env.local
+NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=mock.shop
+NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=mock-shop-needs-no-token
+```
+
+What it does not prove: its products and currency (CAD) are not the owner's, and its checkout is a demo page that does not show the cart's items. Switch to the development store's settings for the real `frontend-check` sign-off, and never deploy with mock.shop settings.
 
 ## Done means
 
