@@ -8,6 +8,7 @@ export function CartDrawer() {
   const {
     isOpen,
     isLoading,
+    error,
     closeCart,
     cart,
     totalQuantity,
@@ -57,6 +58,12 @@ export function CartDrawer() {
               <X className="h-5 w-5" />
             </button>
           </div>
+
+          {error && (
+            <p role="alert" className="mx-6 mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+              {error}
+            </p>
+          )}
 
           {/* Cart Items List */}
           <div className="flex-1 overflow-y-auto px-6 py-4">

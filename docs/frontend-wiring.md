@@ -99,20 +99,17 @@ Everything goes through `POST /api/cart` with a JSON body. On success the respon
 ### The pattern
 
 ```ts
-const CART_ID_KEY = "shopify-cart-id";
+// The kit ships the /api/cart client: it reads the cart correctly and throws on failure.
+import { cartAction, isShopifyCartId } from "@/lib/shopify/cart-client";
 
-async function cartAction(body: Record<string, unknown>) {
-  const res = await fetch("/api/cart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Cart request failed");
-  return data; // the cart itself, or null
-}
+const CART_ID_KEY = "shopify-cart-id";
 
 export async function addToCart(variantId: string, quantity = 1) {
   const cartId = localStorage.getItem(CART_ID_KEY);
   const lines = [{ merchandiseId: variantId, quantity }];
-  const cart = cartId ? await cartAction({ action: "add", cartId, lines }) : await cartAction({ action: "create", lines });
-  if (cart) localStorage.setItem(CART_ID_KEY, cart.id);
+  const cart = isShopifyCartId(cartId) ? await cartAction({ action: "add", cartId, lines }) : await cartAction({ action: "create", lines });
+  if (!cart) throw new Error("This shop is not connected to Shopify yet.");
+  localStorage.setItem(CART_ID_KEY, cart.id);
   return cart;
 }
 ```

@@ -5,9 +5,9 @@ import { findSdkDir } from "../shopify/sdk-dir.mjs";
 
 register("./ts-hooks.mjs", import.meta.url);
 
-/** Imports the repo's Storefront SDK with whatever Shopify env vars the caller has set. */
-export function loadSdk() {
+/** Imports one module of the repo's Storefront SDK (index by default) with whatever Shopify env vars the caller has set. */
+export function loadSdk(name = "index") {
   const dir = findSdkDir(process.cwd());
   if (!dir) throw new Error("no src/lib/shopify or lib/shopify in this repo");
-  return import(pathToFileURL(path.join(dir, "index.ts")).href);
+  return import(pathToFileURL(path.join(dir, `${name}.ts`)).href);
 }
