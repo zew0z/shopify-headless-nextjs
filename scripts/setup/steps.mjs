@@ -9,6 +9,49 @@ const FALLBACK = "If the browser is unavailable, give the human these exact clic
 
 export const STEPS = [
   {
+    id: "frontend-audit",
+    title: "Audit the frontend you received",
+    owner: "code",
+    needs: [],
+    instructions:
+      "From the kit repo: pnpm shop-setup frontend-audit <path to the received repo>. Tell the owner in plain words what it found: how many hardcoded products and where, fake product APIs, the cart and its checkout button, pages that switch caching off. If it says Stop, do not install anything: tell the owner why and ask whether to move the frontend to Next.js with the App Router (a separate job). Never half-wire a frontend the kit does not support.",
+    automation: "frontend-audit",
+  },
+  {
+    id: "kit-install",
+    title: "Install the kit into the received repo",
+    owner: "code",
+    needs: ["frontend-audit"],
+    instructions:
+      "From the kit repo: pnpm shop-setup kit-install <path> --dry-run, show the owner what it adds, then run it without --dry-run. A conflict means the frontend already has a file or script with that name, usually its own fake app/api route: read it, note what it does for the wiring, remove or rename it, and run again. Then in the received repo: pnpm install, pnpm test:scripts, commit. From here on, work in the received repo; its store-setup.state.json already has this step and the audit done.",
+    automation: "kit-install",
+  },
+  {
+    id: "frontend-catalogue",
+    title: "Show Shopify's products and collections in the received design",
+    owner: "code",
+    needs: ["kit-install"],
+    instructions:
+      "Follow docs/frontend-wiring.md, section Catalogue. Keep their components and their product type: write one mapper from the SDK's Product to their type, read products and collections with the SDK in server components, pass the mapped data down. Fields Shopify does not have (ratings, reviews, made-up was-prices) are reported to the owner, never invented. Remove anything that switches caching off on pages that show products, and allow cdn.shopify.com in next.config images.",
+  },
+  {
+    id: "frontend-cart",
+    title: "Connect the received cart to Shopify's cart and checkout",
+    owner: "code",
+    needs: ["frontend-catalogue"],
+    instructions:
+      "Follow docs/frontend-wiring.md, section Cart. Keep their cart UI; replace its state with Shopify's cart through /api/cart (create on the first add, keep the cart id in localStorage, read the cart back on load), show totals from cart.cost, and send the checkout button to cart.checkoutUrl. Every add needs a variant id: if products have several variants and the design has no picker, ask the owner.",
+  },
+  {
+    id: "frontend-check",
+    title: "Prove the received frontend is wired to Shopify",
+    owner: "code",
+    needs: ["frontend-cart", "headless-channel"],
+    instructions:
+      "In the received repo: pnpm shop-setup frontend-check, then pnpm build. Then run it with the development store's public Storefront token in .env.local and click through: product list, a product page, add to cart, the checkout button opens Shopify's checkout. Mark done only when all of that passed; say which parts were not run. Ask the owner before deleting their old product data files.",
+    automation: "frontend-check",
+  },
+  {
     id: "intake",
     title: "Answer the store questionnaire",
     owner: "human",
@@ -94,7 +137,7 @@ export const STEPS = [
     id: "hosting",
     title: "Deploy the frontend and point the main domain at it",
     owner: "human",
-    needs: ["headless-channel"],
+    needs: ["headless-channel", "frontend-check"],
     instructions:
       "Deploy the frontend to its host, point the main domain's DNS at it, set the PUBLIC env vars there (never the Admin token), and set up an uptime check. Only the owner has the hosting and DNS accounts. Give the agent the live URL: it becomes SITE_URL and E2E_SITE_URL.",
   },

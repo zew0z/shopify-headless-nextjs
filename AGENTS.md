@@ -11,3 +11,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # Store setup
 
 To set up or take live a Shopify store behind this frontend, follow `.claude/skills/shopify-store-setup/SKILL.md` and start with `pnpm shop-setup next`.
+
+To connect a frontend someone else built, follow `.claude/skills/shopify-connect-frontend/SKILL.md`: `pnpm shop-setup frontend-audit <path>` then `pnpm shop-setup kit-install <path>` from this repo.

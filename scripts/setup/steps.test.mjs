@@ -91,3 +91,25 @@ test("the admin connection steps name the commands, and the scopes cover every s
     assert.match(byId["dev-app"].instructions, new RegExp(scope), `dev-app must list ${scope}`);
   }
 });
+
+test("a received frontend is audited, gets the kit, is wired and checked, in that order", () => {
+  const chain = ["frontend-audit", "kit-install", "frontend-catalogue", "frontend-cart", "frontend-check"];
+  for (const id of chain) assert.equal(byId[id]?.owner, "code", `${id} must exist and be agent code work`);
+  for (let i = 1; i < chain.length; i++) assert.ok(byId[chain[i]].needs.includes(chain[i - 1]), `${chain[i]} must need ${chain[i - 1]}`);
+  assert.equal(byId["frontend-audit"].automation, "frontend-audit");
+  assert.equal(byId["kit-install"].automation, "kit-install");
+  assert.equal(byId["frontend-check"].automation, "frontend-check");
+  assert.ok(byId["frontend-check"].needs.includes("headless-channel"), "the check needs a store to show real products");
+  assert.match(byId["frontend-check"].instructions, /pnpm build/);
+});
+
+test("an unwired frontend is never deployed", () => {
+  assert.ok(byId.hosting.needs.includes("frontend-check"));
+});
+
+test("every automation names a command the CLI has", async () => {
+  const { readFileSync } = await import("node:fs");
+  const cli = readFileSync(new URL("./cli.mjs", import.meta.url), "utf8");
+  const commands = new Set([...cli.matchAll(/case "([\w-]+)":/g)].map((m) => m[1]));
+  for (const s of STEPS) if (s.automation) assert.ok(commands.has(s.automation), `${s.id} names unknown command ${s.automation}`);
+});

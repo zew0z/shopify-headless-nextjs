@@ -37,7 +37,7 @@ test("a src/ repo gets everything under src/", () => {
 
 test("the setup scripts, tests, skill and docs come along; the kit's pages, plans and README do not", () => {
   const to = kitFiles(kitRoot, "").map((f) => f.to);
-  for (const want of ["scripts/setup/cli.mjs", "scripts/frontend/audit.mjs", "scripts/test-support/ts-hooks.mjs", "e2e/pages.spec.mjs", "playwright.config.mjs", "store-setup.config.example.json", ".claude/skills/shopify-store-setup/SKILL.md", "docs/catalogue-import.md", "docs/shopify-api-gotchas.md"]) {
+  for (const want of ["scripts/setup/cli.mjs", "scripts/frontend/audit.mjs", "scripts/test-support/ts-hooks.mjs", "e2e/pages.spec.mjs", "playwright.config.mjs", "store-setup.config.example.json", ".claude/skills/shopify-store-setup/SKILL.md", ".claude/skills/shopify-connect-frontend/SKILL.md", "docs/catalogue-import.md", "docs/shopify-api-gotchas.md", "docs/frontend-wiring.md"]) {
     assert.ok(to.includes(want), `${want} missing`);
   }
   assert.ok(!to.some((t) => /^docs\/superpowers|components\/|context\/|app\/page|README|globals\.css/.test(t)), "kit-only file in the kit");

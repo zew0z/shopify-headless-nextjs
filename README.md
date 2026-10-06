@@ -138,6 +138,18 @@ window.location.href = cart.checkoutUrl;
 
 ---
 
+## 🔌 Connecting a frontend you received
+
+This repo is also a kit you install into someone else's Next.js 16 App Router frontend:
+
+```bash
+pnpm shop-setup frontend-audit ../their-frontend   # what it is, where its products and cart live
+pnpm shop-setup kit-install ../their-frontend --dry-run
+pnpm shop-setup kit-install ../their-frontend       # never overwrites; stops on any conflict
+```
+
+Then, inside their repo, wire it with [`docs/frontend-wiring.md`](docs/frontend-wiring.md) and prove it with `pnpm shop-setup frontend-check`. The agent's manual is [`.claude/skills/shopify-connect-frontend/SKILL.md`](.claude/skills/shopify-connect-frontend/SKILL.md).
+
 ## 📖 Complete Documentation
 
 See [`SHOPIFY_INTEGRATION_GUIDE.md`](./SHOPIFY_INTEGRATION_GUIDE.md) for full architectural specifications, error codes, webhook registration steps, and team deployment patterns.
