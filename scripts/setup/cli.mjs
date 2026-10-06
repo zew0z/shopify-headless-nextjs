@@ -8,6 +8,8 @@ import { pushCatalogue } from "../catalogue/push.mjs";
 import { compareToCatalogue, fetchStorefront, summarise } from "../catalogue/verify.mjs";
 import { nextActions } from "./engine.mjs";
 import { auditFrontend, summariseAudit } from "../frontend/audit.mjs";
+import { hasConflicts, planKitInstall } from "../frontend/kit.mjs";
+import { applyKitInstall } from "../frontend/install.mjs";
 import { STEPS } from "./steps.mjs";
 import { loadState, markDone, saveState } from "./state.mjs";
 import { loadConfig } from "./config.mjs";
@@ -223,7 +225,43 @@ switch (command) {
     info(`Full findings: ${path.join(dir, "frontend-audit.json")}`);
     process.exit(audit.stack.supported ? 0 : 1);
   }
+  case "kit-install": {
+    if (!args[0]) {
+      bad("usage: pnpm shop-setup kit-install <path to the received frontend's repo> [--dry-run]");
+      process.exit(1);
+    }
+    const target = path.resolve(args[0]);
+    const audit = auditFrontend(target);
+    if (!audit.stack.supported) {
+      bad(`Stop: ${audit.stack.reason}`);
+      process.exit(1);
+    }
+    const plan = planKitInstall({ kitRoot: process.cwd(), target, appRoot: audit.stack.appRoot });
+    const { scripts, devDependencies } = plan.packageJson.add;
+    heading(`Kit into ${target}`);
+    info(`${plan.write.length} files to add, ${plan.same.length} already there`);
+    if (Object.keys(scripts).length) info(`package.json scripts to add: ${Object.keys(scripts).join(", ")}`);
+    if (Object.keys(devDependencies).length) info(`dev tools to add: ${Object.keys(devDependencies).join(", ")}`);
+    if (plan.gitignore.length) info(`.gitignore lines to add: ${plan.gitignore.join(" ")}`);
+    if (plan.agentsNote) info("agent instructions to add: the # Store setup block");
+    if (hasConflicts(plan)) {
+      for (const c of plan.conflicts) bad(`${c.to}: ${c.why}`);
+      for (const c of plan.packageJson.conflicts) bad(`package.json ${c.key} is "${c.have}", the kit needs "${c.want}"`);
+      info("Nothing was written. Resolve each conflict (usually the frontend's own route or script), then run kit-install again.");
+      process.exit(1);
+    }
+    if (flags["dry-run"]) {
+      for (const w of plan.write) info(`+ ${w.to}`);
+      info("Dry run: nothing was written.");
+      break;
+    }
+    const kitVersion = spawnSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).stdout.trim() || "unknown";
+    const { changed } = applyKitInstall(plan, target, { audit: audit.stack.reason, install: `kit ${kitVersion}` });
+    ok(changed ? `kit ${kitVersion} installed (${changed} changes)` : "kit already installed, nothing changed");
+    info(`Next, in ${target}: pnpm install, then pnpm shop-setup next.`);
+    break;
+  }
   default:
-    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | frontend-audit <dir>");
+    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | frontend-audit <dir> | kit-install <dir> [--dry-run]");
     process.exit(command ? 1 : 0);
 }
