@@ -12,8 +12,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { findSdkDir } from "./sdk-dir.mjs";
 
-export const SDK_DIR = path.join(process.cwd(), "src", "lib", "shopify");
+export const SDK_DIR = findSdkDir(process.cwd()) ?? path.join(process.cwd(), "src", "lib", "shopify");
 export const PROXY = (version) => `https://shopify.dev/storefront-graphql-direct-proxy/${version}`;
 
 /** Evaluates one SDK .ts file in isolation. Only relative imports between the SDK's own files are allowed. */
