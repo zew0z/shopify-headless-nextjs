@@ -10,6 +10,7 @@ import { nextActions } from "./engine.mjs";
 import { auditFrontend, summariseAudit } from "../frontend/audit.mjs";
 import { hasConflicts, planKitInstall } from "../frontend/kit.mjs";
 import { applyKitInstall } from "../frontend/install.mjs";
+import { checkWiring } from "../frontend/check.mjs";
 import { STEPS } from "./steps.mjs";
 import { loadState, markDone, saveState } from "./state.mjs";
 import { loadConfig } from "./config.mjs";
@@ -261,7 +262,18 @@ switch (command) {
     info(`Next, in ${target}: pnpm install, then pnpm shop-setup next.`);
     break;
   }
+  case "frontend-check": {
+    const results = checkWiring(path.resolve(args[0] ?? "."));
+    for (const r of results) {
+      (r.ok ? ok : bad)(r.what);
+      for (const w of r.where) info(w);
+    }
+    const failed = results.filter((r) => !r.ok).length;
+    if (failed) info(`${failed} of ${results.length} checks failed.`);
+    else info("Wiring looks right. Still needed before marking frontend-check done: pnpm build passes, and the pages show the development store's products.");
+    process.exit(failed ? 1 : 0);
+  }
   default:
-    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | frontend-audit <dir> | kit-install <dir> [--dry-run]");
+    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir]");
     process.exit(command ? 1 : 0);
 }

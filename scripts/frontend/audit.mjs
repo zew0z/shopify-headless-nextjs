@@ -80,7 +80,7 @@ export function checkImages(dir) {
 }
 
 /** The kit's API routes, once installed, import the SDK; the frontend's own routes do not. */
-function isKitRoute(dir, file) {
+export function isKitRoute(dir, file) {
   return /^(src\/)?app\/api\/(cart|revalidate|health|search)\/route\.ts$/.test(file) && read(dir, file).includes("lib/shopify");
 }
 

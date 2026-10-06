@@ -82,7 +82,7 @@ const PRODUCTISH = /product|item|catalog|collection|shop/i;
 const ROUTE_FILE = /^(src\/)?app\/api\/.+\/route\.[jt]sx?$/;
 const stripExt = (file) => file.replace(/\.[^/.]+$/, "").replace(/\/index$/, "");
 
-function importsFile(routeFile, spec, dataFile) {
+export function importsFile(routeFile, spec, dataFile) {
   const target = stripExt(dataFile);
   if (spec.startsWith(".")) return stripExt(path.posix.join(path.posix.dirname(routeFile), spec)) === target;
   const rest = spec.replace(/^[@~]\//, "");
