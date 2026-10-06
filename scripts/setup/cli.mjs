@@ -1,10 +1,13 @@
 import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import path from "node:path";
 import { parseArgs } from "./args.mjs";
 import { buildCatalogue, readCatalogFile } from "../catalogue/build.mjs";
 import { fetchVariantTracking, inventoryMismatches } from "../catalogue/inventory.mjs";
 import { pushCatalogue } from "../catalogue/push.mjs";
 import { compareToCatalogue, fetchStorefront, summarise } from "../catalogue/verify.mjs";
 import { nextActions } from "./engine.mjs";
+import { auditFrontend, summariseAudit } from "../frontend/audit.mjs";
 import { STEPS } from "./steps.mjs";
 import { loadState, markDone, saveState } from "./state.mjs";
 import { loadConfig } from "./config.mjs";
@@ -210,7 +213,17 @@ switch (command) {
     if (run.status === 0) info("Skipped tests are not passes. Check the output above for skips before marking this step done.");
     process.exit(run.status ?? 1);
   }
+  case "frontend-audit": {
+    const dir = path.resolve(args[0] ?? ".");
+    const audit = auditFrontend(dir);
+    const [verdict, ...rest] = summariseAudit(audit);
+    (audit.stack.supported ? ok : bad)(verdict);
+    for (const line of rest) info(line);
+    writeFileSync(path.join(dir, "frontend-audit.json"), `${JSON.stringify(audit, null, 2)}\n`);
+    info(`Full findings: ${path.join(dir, "frontend-audit.json")}`);
+    process.exit(audit.stack.supported ? 0 : 1);
+  }
   default:
-    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e");
+    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | frontend-audit <dir>");
     process.exit(command ? 1 : 0);
 }
