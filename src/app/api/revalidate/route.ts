@@ -36,13 +36,8 @@ export async function POST(req: NextRequest) {
     const revalidatedTags: string[] = [];
 
     const purgeTag = (tag: string) => {
-      // In Next.js 16, revalidateTag accepts { expire: 0 } for immediate purge
-      // Cast through unknown to remain backwards/forwards compatible across Next versions
-      try {
-        (revalidateTag as unknown as (tag: string, profile?: unknown) => void)(tag, { expire: 0 });
-      } catch {
-        (revalidateTag as unknown as (tag: string) => void)(tag);
-      }
+      // { expire: 0 }: the next visitor gets Shopify's new data, never the old price or stock.
+      revalidateTag(tag, { expire: 0 });
       revalidatedTags.push(tag);
     };
 

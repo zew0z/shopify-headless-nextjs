@@ -107,6 +107,7 @@ export async function shopifyFetch<T>({
   };
 
   // Execute request with timeout and exponential backoff retry loop
+  const isMutation = /^\s*mutation\b/m.test(query);
   let attempt = 0;
   while (attempt <= retries) {
     const controller = new AbortController();
@@ -173,8 +174,9 @@ export async function shopifyFetch<T>({
     } catch (err: unknown) {
       clearTimeout(timeoutId);
 
-      // Retry on network abort or transient fetch errors
-      if (attempt < retries) {
+      // Retry on network abort or transient fetch errors. Never for a mutation: Shopify may
+      // have applied it before the connection dropped, and sending it again adds the item twice.
+      if (attempt < retries && !isMutation) {
         const isAbort = (err as Error)?.name === "AbortError";
         const isNetworkErr = (err as Error)?.message?.includes("fetch failed");
 

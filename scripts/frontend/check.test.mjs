@@ -51,6 +51,20 @@ test("a wired frontend passes every check, even with its old data file still on 
   assert.equal(results.length, 6);
 });
 
+test("a cart wired through the kit's cartAction, as the wiring guide shows, talks to Shopify", () => {
+  const r = byWhat(
+    checkWiring(
+      makeFixture({
+        ...WIRED,
+        "src/context/cart.tsx": `import { cartAction } from "@/lib/shopify/cart-client";
+const add = (lines) => cartAction({ action: "create", lines });
+const go = (cart) => { window.location.href = cart.checkoutUrl; };`,
+      })
+    )
+  );
+  assert.deepEqual(r["The cart talks to Shopify and checkout uses Shopify's checkoutUrl"].where, []);
+});
+
 test("a frontend without the kit fails the first check", () => {
   const r = byWhat(checkWiring(makeFixture({ "package.json": { dependencies: { next: "16" } }, "app/page.tsx": "" })));
   assert.equal(r["The Shopify SDK and /api/cart are installed"].ok, false);

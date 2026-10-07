@@ -6,6 +6,8 @@ import { listSourceFiles } from "./walk.mjs";
 
 const CATALOGUE_CALL = /\b(getProducts?|getCollections?|getCollectionProducts|getProductRecommendations)\s*\(/;
 const LAYOUT = /^(src\/)?app\/(.+\/)?layout\.[jt]sx?$/;
+// The kit's cart client, which the wiring guide uses, calls /api/cart for the frontend.
+const CART_CLIENT_IMPORT = /\bfrom\s+["'][^"']*lib\/shopify\/cart-client["']/;
 
 /**
  * Whether a received frontend is really wired to Shopify, once the agent has
@@ -26,7 +28,7 @@ export function checkWiring(dir) {
     .filter((c) => LAYOUT.test(c.file) || CATALOGUE_CALL.test(text[c.file] ?? ""))
     .map((c) => `${c.file}:${c.line} ${c.what}`);
 
-  const usesCart = files.some((f) => text[f].includes("/api/cart"));
+  const usesCart = files.some((f) => text[f].includes("/api/cart") || CART_CLIENT_IMPORT.test(text[f]));
   const usesCheckoutUrl = files.some((f) => /\bcheckoutUrl\b/.test(text[f]));
 
   return [
