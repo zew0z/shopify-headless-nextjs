@@ -43,6 +43,11 @@ test("the setup scripts, tests, skill and docs come along; the kit's pages, plan
   assert.ok(!to.some((t) => /^docs\/superpowers|components\/|context\/|app\/page|README|globals\.css/.test(t)), "kit-only file in the kit");
 });
 
+test("the kit ships no hardcoded products: every product comes from Shopify", () => {
+  const to = kitFiles(kitRoot, "").map((f) => f.to);
+  assert.ok(!to.some((t) => /mock/i.test(t)), `kit ships made-up data: ${to.filter((t) => /mock/i.test(t))}`);
+});
+
 test("an identical file is left alone; a different one is a conflict and the plan says so", () => {
   const route = kitFiles(kitRoot, "").find((f) => f.to === "app/api/health/route.ts");
   const healthText = route.transform(readFileSync(path.join(kitRoot, route.from), "utf8"));

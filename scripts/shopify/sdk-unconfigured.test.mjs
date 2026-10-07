@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { loadSdk } from "../test-support/load-sdk.mjs";
 
 /**
- * The SDK with no Shopify settings at all. Mock products are a development
- * convenience; a production build must never show them to a customer.
+ * The SDK with no Shopify settings at all. Nothing is made up: every product
+ * comes from Shopify, so without settings every read fails and says why,
+ * in development as well as production.
  */
 for (const name of [
   "NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN",
@@ -34,15 +35,13 @@ const catalogueReads = {
   getCollectionProducts: () => sdk.getCollectionProducts({ handle: "mock-collection" }),
 };
 
-for (const [name, read] of Object.entries(catalogueReads)) {
-  test(`${name}: a production build with no Shopify settings refuses to serve mock products`, () =>
-    withNodeEnv("production", () =>
-      assert.rejects(read(), (err) => err instanceof sdk.ShopifyError && /not configured/.test(err.message))
-    ));
-}
+catalogueReads.predictiveSearch = () => sdk.predictiveSearch("anything");
 
-test("development with no Shopify settings still shows the mock catalogue", () =>
-  withNodeEnv("development", async () => {
-    const products = await sdk.getProducts({ limit: 2 });
-    assert.equal(products.length, 2);
-  }));
+for (const env of ["production", "development"]) {
+  for (const [name, read] of Object.entries(catalogueReads)) {
+    test(`${name}: with no Shopify settings in ${env}, it refuses instead of making up products`, () =>
+      withNodeEnv(env, () =>
+        assert.rejects(read(), (err) => err instanceof sdk.ShopifyError && /not configured/.test(err.message))
+      ));
+  }
+}

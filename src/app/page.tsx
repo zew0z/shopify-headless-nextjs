@@ -1,43 +1,13 @@
 import Link from "next/link";
-import { getProducts, getCollections, isShopifyConfigured, shopifyConfig } from "@/lib/shopify";
-import { MOCK_PRODUCTS } from "@/lib/shopify/mock-data";
+import { getProducts, getCollections } from "@/lib/shopify";
 import { ProductCard } from "@/components/ProductCard";
-import { ArrowRight, Sparkles, CheckCircle2, PackagePlus } from "lucide-react";
-
-export const dynamic = "force-dynamic";
+import { ArrowRight, Sparkles } from "lucide-react";
 
 export default async function HomePage() {
-  const liveProducts = await getProducts({ limit: 8 });
-  const collections = await getCollections();
-
-  const hasLiveProducts = liveProducts.length > 0;
-  const displayProducts = hasLiveProducts ? liveProducts : MOCK_PRODUCTS;
-  const storeDomain = shopifyConfig.domain || "Shopify Store";
+  const [products, collections] = await Promise.all([getProducts({ limit: 8 }), getCollections()]);
 
   return (
     <div className="flex flex-col gap-16 pb-20">
-      {/* Live Status Banner */}
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl px-5 py-3.5 text-sm font-medium border bg-emerald-50/90 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200 shadow-xs">
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-            </span>
-            <span>
-              Connected to <strong>{storeDomain}</strong> via Storefront API
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-200/80 dark:bg-emerald-900/60 px-3 py-1 text-xs font-semibold text-emerald-900 dark:text-emerald-100">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              API Ready
-            </span>
-          </div>
-        </div>
-      </div>
-
       {/* Hero Section */}
       <section className="relative overflow-hidden pt-2 pb-10 sm:pb-14">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -49,7 +19,7 @@ export default async function HomePage() {
             <div className="relative z-10 max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-neutral-200 backdrop-blur-md mb-6">
                 <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-                <span>Next.js 15 App Router & Shopify Storefront</span>
+                <span>Next.js 16 App Router & Shopify Storefront</span>
               </div>
 
               <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl leading-[1.1]">
@@ -80,60 +50,30 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Notice if Store has 0 products published */}
-      {!hasLiveProducts && (
-        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="rounded-2xl border border-sky-200 bg-sky-50/80 dark:border-sky-900/60 dark:bg-sky-950/30 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <div className="rounded-xl bg-sky-600 text-white p-2.5 mt-0.5 shadow-sm">
-                <PackagePlus className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-sky-950 dark:text-sky-200 text-base">
-                  Catalog Fallback Active
-                </h3>
-                <p className="text-xs sm:text-sm text-sky-800 dark:text-sky-300 mt-1">
-                  Sample demo items are active below so your storefront remains fully testable. Connect your Shopify credentials in <code>.env.local</code> and published items will appear automatically!
-                </p>
-              </div>
-            </div>
-
-            <a
-              href="https://admin.shopify.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-shrink-0 inline-flex items-center gap-2 rounded-xl bg-sky-900 dark:bg-sky-100 dark:text-sky-950 text-white px-4 py-2.5 text-xs font-semibold hover:bg-sky-800 transition-colors shadow-sm"
-            >
-              <span>Open Shopify Admin</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </a>
-          </div>
-        </section>
-      )}
-
       {/* Products Section */}
       <section id="products" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-neutral-900 dark:text-white sm:text-3xl">
-              {hasLiveProducts ? "Your Store Products" : "Catalog Preview"}
+              Products
             </h2>
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-              {hasLiveProducts
-                ? "Live inventory synchronized directly from your Shopify store."
-                : "Interactive mock items while your Shopify catalog is prepared."}
-            </p>
           </div>
           <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
-            {displayProducts.length} Items Available
+            {products.length} Items
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {displayProducts.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
+        {products.length === 0 ? (
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+            No products are published to this sales channel in Shopify yet.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {products.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Collections Section */}

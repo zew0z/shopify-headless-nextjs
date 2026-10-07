@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Aura | Modern Headless Shopify Storefront",
-  description: "Ultra-fast headless e-commerce experience powered by Shopify Storefront API and Next.js 15",
+  description: "Ultra-fast headless e-commerce experience powered by Shopify Storefront API and Next.js 16",
 };
 
 export default function RootLayout({

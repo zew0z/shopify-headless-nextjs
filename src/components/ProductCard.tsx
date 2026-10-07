@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Product } from "@/lib/shopify/types";
 import { useCart } from "@/context/cart-context";
 import { Plus } from "lucide-react";
+import { formatMoney } from "@/lib/shopify/money";
 
 interface ProductCardProps {
   product: Product;
@@ -13,17 +14,12 @@ interface ProductCardProps {
 export function ProductCard({ product }: ProductCardProps) {
   const { addItem } = useCart();
   const firstVariant = product.variants.edges[0]?.node;
-  const imageUrl =
-    product.featuredImage?.url ||
-    firstVariant?.image?.url ||
-    "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=800&auto=format&fit=crop";
+  const imageUrl = product.featuredImage?.url || firstVariant?.image?.url;
 
-  const minPrice = parseFloat(product.priceRange.minVariantPrice.amount);
-  const comparePrice = product.compareAtPriceRange?.minVariantPrice
-    ? parseFloat(product.compareAtPriceRange.minVariantPrice.amount)
-    : null;
+  const minPrice = product.priceRange.minVariantPrice;
+  const comparePrice = product.compareAtPriceRange?.minVariantPrice;
 
-  const hasDiscount = comparePrice && comparePrice > minPrice;
+  const hasDiscount = comparePrice && Number(comparePrice.amount) > Number(minPrice.amount);
 
   const handleQuickAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -37,13 +33,15 @@ export function ProductCard({ product }: ProductCardProps) {
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-neutral-200/80 bg-white dark:border-neutral-800 dark:bg-neutral-900 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
       {/* Product Image Container */}
       <Link href={`/products/${product.handle}`} className="relative aspect-square w-full overflow-hidden bg-neutral-100 dark:bg-neutral-800">
-        <Image
-          src={imageUrl}
-          alt={product.featuredImage?.altText || product.title}
-          fill
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
-        />
+        {imageUrl && (
+          <Image
+            src={imageUrl}
+            alt={product.featuredImage?.altText || product.title}
+            fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
+          />
+        )}
 
         {hasDiscount && (
           <span className="absolute top-3 left-3 rounded-full bg-rose-500 px-2.5 py-0.5 text-xs font-semibold text-white shadow">
@@ -79,16 +77,13 @@ export function ProductCard({ product }: ProductCardProps) {
 
         <div className="mt-4 flex items-baseline gap-2">
           <span className="text-lg font-bold text-neutral-900 dark:text-white">
-            ${minPrice.toFixed(2)}
+            {formatMoney(minPrice)}
           </span>
           {hasDiscount && (
             <span className="text-xs text-neutral-400 line-through">
-              ${comparePrice?.toFixed(2)}
+              {formatMoney(comparePrice)}
             </span>
           )}
-          <span className="text-xs text-neutral-400">
-            {product.priceRange.minVariantPrice.currencyCode}
-          </span>
         </div>
       </div>
     </div>

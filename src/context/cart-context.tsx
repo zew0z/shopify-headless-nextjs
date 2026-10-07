@@ -15,8 +15,6 @@ interface CartContextType {
   updateItemQuantity: (lineId: string, quantity: number) => Promise<void>;
   removeItem: (lineId: string) => Promise<void>;
   totalQuantity: number;
-  subtotal: string;
-  currency: string;
   checkoutUrl: string;
 }
 
@@ -88,8 +86,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const totalQuantity = cart?.totalQuantity || 0;
-  const subtotal = cart?.cost.subtotalAmount.amount || "0.00";
-  const currency = cart?.cost.subtotalAmount.currencyCode || "EUR";
   const checkoutUrl = cart?.checkoutUrl || "";
 
   return (
@@ -105,8 +101,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         updateItemQuantity,
         removeItem,
         totalQuantity,
-        subtotal,
-        currency,
         checkoutUrl,
       }}
     >

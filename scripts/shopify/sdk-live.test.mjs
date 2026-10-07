@@ -77,3 +77,32 @@ test("the cart is never cached", async () => {
   assert.equal(calls[0].init.cache, "no-store");
   assert.equal(calls[0].init.next, undefined);
 });
+
+const networkFailure = () => {
+  throw new TypeError("fetch failed");
+};
+
+test("a cart change whose request failed is not sent again, so an item is never added twice", async () => {
+  stubFetch(networkFailure);
+  await assert.rejects(sdk.addToCart("gid://shopify/Cart/1", [{ merchandiseId: "gid://shopify/ProductVariant/1", quantity: 1 }]));
+  assert.equal(calls.length, 1);
+});
+
+test("a catalogue read whose request failed is tried again", async () => {
+  let first = true;
+  stubFetch(() => {
+    if (first) {
+      first = false;
+      networkFailure();
+    }
+    return json(emptyCatalogue);
+  });
+  await sdk.getProducts({ limit: 4 });
+  assert.equal(calls.length, 2);
+});
+
+test("prices are shown in the currency Shopify returns, never a hardcoded symbol", () => {
+  assert.equal(sdk.formatMoney({ amount: "24.5", currencyCode: "EUR" }, "en"), "€24.50");
+  assert.equal(sdk.formatMoney({ amount: "24.5", currencyCode: "EUR" }, "el-GR"), "24,50\u00a0€");
+  assert.equal(sdk.formatMoney({ amount: "1200", currencyCode: "USD" }, "en"), "$1,200.00");
+});

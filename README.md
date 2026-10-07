@@ -1,7 +1,7 @@
 # Shopify Headless Next.js Backend SDK & Integration Architecture
 
-[![Next.js](https://img.shields.io/badge/Next.js-15%20%2F%2016-black?style=flat&logo=next.js)](https://nextjs.org/)
-[![Shopify](https://img.shields.io/badge/Shopify%20Storefront%20API-2025--01-green?style=flat&logo=shopify)](https://shopify.dev/docs/api/storefront)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat&logo=next.js)](https://nextjs.org/)
+[![Shopify](https://img.shields.io/badge/Shopify%20Storefront%20API-2026--07-green?style=flat&logo=shopify)](https://shopify.dev/docs/api/storefront)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
 
 A production-grade, modular **Shopify Storefront Backend SDK** engineered for Next.js (App Router & SSR). Designed as a drop-in integration layer to connect any custom frontend to Shopify's modern GraphQL API with zero lock-in and zero external Shopify runtime dependencies.
@@ -53,7 +53,7 @@ flowchart TD
 
 3. **Rate-Limit & Edge Resilience**:
    - **IP Forwarding**: Automatically forwards client IP (`Shopify-Storefront-Buyer-IP` via `x-forwarded-for`) to prevent serverless hosts (Vercel, AWS Lambda) from being rate-limited under a single shared IP.
-   - **Exponential Backoff**: Built-in 3-step automatic retry for `429 Too Many Requests` and `503 Service Unavailable`.
+   - **Exponential Backoff**: Built-in 3-step automatic retry for `429 Too Many Requests` and `503 Service Unavailable`. Cart changes are never resent after a timeout, so an item is never added twice.
 
 4. **Predictive Search & Type-Ahead**:
    - Query engine supporting Shopify's `predictiveSearch` GraphQL query for instant multi-resource suggestions (products, collections, search queries).
@@ -77,7 +77,7 @@ src/
     ├── client.ts               # Resilient fetch client (rate limits, backoff, IP)
     ├── config.ts               # Env validation, domain sanitization & fallbacks
     ├── index.ts                # Master SDK exports
-    ├── mock-data.ts            # Realistic offline fixtures for dev environments
+    ├── money.ts                # formatMoney: a price in the currency Shopify returned
     ├── mutations.ts            # Complete GraphQL cart & gift card mutations
     ├── queries.ts              # Catalog, collections & predictive search queries
     └── types.ts                # 100% strict TypeScript types for Storefront models

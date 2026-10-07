@@ -41,7 +41,6 @@ import {
   removeCartGiftCardCodesMutation,
   updateCartBuyerIdentityMutation,
 } from "./mutations";
-import { MOCK_PRODUCTS, MOCK_COLLECTIONS } from "./mock-data";
 
 // Re-export configs, client, and types
 export * from "./types";
@@ -49,6 +48,7 @@ export * from "./config";
 export * from "./client";
 export * from "./queries";
 export * from "./mutations";
+export * from "./money";
 
 /**
  * Catalogue reads are shared by every visitor, so they live in the Next.js data
@@ -57,19 +57,16 @@ export * from "./mutations";
 const CATALOGUE_CACHE: RequestCache = "force-cache";
 
 /**
- * Mock products are a development convenience only. A production build without
- * Shopify settings throws, so it fails loudly instead of selling fake products.
- * Once Shopify is configured, its errors are thrown too, never replaced by mocks.
+ * Every product comes from Shopify; nothing is made up. Without Shopify settings
+ * the catalogue reads throw and say what to set, in development and production.
+ * To work without the owner's store, point the settings at mock.shop.
  */
-function mockCatalogueAllowed(): boolean {
-  if (isShopifyConfigured) return false;
-  if (process.env.NODE_ENV === "production") {
-    throw new ShopifyError(
-      "Shopify is not configured: set NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN and NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN. Mock products are never served in production.",
-      500
-    );
-  }
-  return true;
+function requireShopify(): void {
+  if (isShopifyConfigured) return;
+  throw new ShopifyError(
+    "Shopify is not configured: set NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN and NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN (mock.shop works for development).",
+    500
+  );
 }
 
 // -------------------------------------------------------------
@@ -160,18 +157,7 @@ export async function checkShopifyConnection(): Promise<ConnectionHealthCheck> {
  * const products = await getProducts({ limit: 12, sortKey: "PRICE", reverse: true });
  */
 export async function getProducts(options?: GetProductsOptions): Promise<Product[]> {
-  if (mockCatalogueAllowed()) {
-    if (options?.query) {
-      const q = options.query.toLowerCase();
-      return MOCK_PRODUCTS.filter(
-        (p) =>
-          p.title.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q) ||
-          p.tags.some((t) => t.toLowerCase().includes(q))
-      );
-    }
-    return MOCK_PRODUCTS.slice(0, options?.limit || 20);
-  }
+  requireShopify();
 
   const res = await shopifyFetch<{
     products: {
@@ -204,9 +190,7 @@ export async function getProduct(
   handle: string,
   options?: { cache?: RequestCache; revalidate?: number }
 ): Promise<Product | null> {
-  if (mockCatalogueAllowed()) {
-    return MOCK_PRODUCTS.find((p) => p.handle === handle) || null;
-  }
+  requireShopify();
 
   const res = await shopifyFetch<{
     product: Product | null;
@@ -228,9 +212,7 @@ export async function getProduct(
  * const recommendations = await getProductRecommendations("gid://shopify/Product/12345");
  */
 export async function getProductRecommendations(productId: string): Promise<Product[]> {
-  if (mockCatalogueAllowed()) {
-    return MOCK_PRODUCTS.slice(0, 4);
-  }
+  requireShopify();
 
   const res = await shopifyFetch<{
     productRecommendations: Product[];
@@ -257,20 +239,7 @@ export async function predictiveSearch(
   const emptyResult: PredictiveSearchResult = { queries: [], products: [], collections: [] };
   if (!query || query.trim().length === 0) return emptyResult;
 
-  if (!isShopifyConfigured) {
-    const q = query.toLowerCase();
-    const matchedProducts = MOCK_PRODUCTS.filter(
-      (p) => p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
-    );
-    const matchedCollections = MOCK_COLLECTIONS.filter((c) =>
-      c.title.toLowerCase().includes(q)
-    );
-    return {
-      queries: [{ text: query }],
-      products: matchedProducts,
-      collections: matchedCollections,
-    };
-  }
+  requireShopify();
 
   try {
     const res = await shopifyFetch<{
@@ -314,9 +283,7 @@ export async function predictiveSearch(
  * const collections = await getCollections({ limit: 10 });
  */
 export async function getCollections(options?: { limit?: number; cursor?: string }): Promise<Collection[]> {
-  if (mockCatalogueAllowed()) {
-    return MOCK_COLLECTIONS.slice(0, options?.limit || 10);
-  }
+  requireShopify();
 
   const res = await shopifyFetch<{
     collections: {
@@ -339,9 +306,7 @@ export async function getCollections(options?: { limit?: number; cursor?: string
  * Fetches a single collection by handle.
  */
 export async function getCollection(handle: string): Promise<Collection | null> {
-  if (mockCatalogueAllowed()) {
-    return MOCK_COLLECTIONS.find((c) => c.handle === handle) || null;
-  }
+  requireShopify();
 
   const res = await shopifyFetch<{
     collection: Collection | null;
@@ -359,9 +324,7 @@ export async function getCollection(handle: string): Promise<Collection | null> 
  * Fetches products belonging to a collection by handle.
  */
 export async function getCollectionProducts(options: GetCollectionProductsOptions): Promise<Product[]> {
-  if (mockCatalogueAllowed()) {
-    return MOCK_PRODUCTS;
-  }
+  requireShopify();
 
   const res = await shopifyFetch<{
     collection: {

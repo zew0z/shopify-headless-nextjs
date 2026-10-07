@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { getProduct, getProducts } from "@/lib/shopify";
+import { getProduct } from "@/lib/shopify";
 import { ProductForm } from "@/components/ProductForm";
 import { ChevronRight } from "lucide-react";
 import type { Metadata } from "next";
@@ -30,10 +30,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
   }
 
   const images = product.images.edges.map((e) => e.node);
-  const primaryImage = product.featuredImage || images[0] || {
-    url: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=800&auto=format&fit=crop",
-    altText: product.title,
-  };
+  const primaryImage = product.featuredImage || images[0];
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -55,14 +52,16 @@ export default async function ProductPage({ params }: ProductPageProps) {
         {/* Gallery */}
         <div className="space-y-4">
           <div className="relative aspect-square w-full overflow-hidden rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900">
-            <Image
-              src={primaryImage.url}
-              alt={primaryImage.altText || product.title}
-              fill
-              priority
-              className="object-cover object-center"
-              sizes="(max-width: 1024px) 100vw, 50vw"
-            />
+            {primaryImage && (
+              <Image
+                src={primaryImage.url}
+                alt={primaryImage.altText || product.title}
+                fill
+                priority
+                className="object-cover object-center"
+                sizes="(max-width: 1024px) 100vw, 50vw"
+              />
+            )}
           </div>
 
           {images.length > 1 && (

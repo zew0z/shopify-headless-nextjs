@@ -23,7 +23,7 @@ src/
         ├── client.ts             # Fetch client with rate limiting & retries
         ├── config.ts             # Env sanitation & validation
         ├── index.ts              # Public SDK functions (getProducts, cart, etc.)
-        ├── mock-data.ts          # Dev-only catalog when Shopify is not configured (never in production)
+        ├── money.ts              # formatMoney: a price in the currency Shopify returned
         ├── mutations.ts          # Storefront GraphQL mutations
         ├── queries.ts            # Storefront GraphQL queries & fragments
         └── types.ts              # 100% strict TypeScript types
@@ -182,14 +182,16 @@ When products are created or updated in Shopify Admin, Next.js does **not** need
 
 The route [`src/app/api/revalidate/route.ts`](file:///home/zew0z/ShopifyTest/src/app/api/revalidate/route.ts) validates the HMAC signature and executes:
 ```typescript
-revalidateTag("products");
-revalidateTag(`product-${payload.handle}`);
+revalidateTag("products", { expire: 0 });
+revalidateTag(`product-${payload.handle}`, { expire: 0 });
 ```
 The updated product appears on the frontend instantly.
 
 This only works while catalogue reads are cached. The SDK caches `getProducts`, `getProduct`, `getProductRecommendations`, `getCollections`, `getCollection` and `getCollectionProducts` (`cache: "force-cache"`, tagged) and leaves the cart uncached. A page that sets `export const dynamic = "force-dynamic"` or `fetchCache = "force-no-store"`, or passes `cache: "no-store"`, fetches on every request: the purge has nothing to clear, and the change-a-title test passes without proving the webhook works. When wiring a frontend you received, search it for these first.
 
-If Shopify fails, the catalogue functions throw. They never substitute mock products: those appear only in development when Shopify is not configured, and a production server without the settings returns an error page.
+If Shopify fails, the catalogue functions throw. Nothing is ever made up in its place: the kit has no mock products, and without Shopify settings every catalogue read and search throws "Shopify is not configured", in development as well as production. To work before the owner's store exists, point the settings at mock.shop (see `docs/frontend-wiring.md`).
+
+Cart changes (add, update, remove, discount, gift card) are never retried after a timeout or dropped connection: Shopify may already have applied them, and sending one again would add the item twice. Reads are retried.
 
 ---
 

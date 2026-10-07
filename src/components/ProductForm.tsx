@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Product, ProductVariant } from "@/lib/shopify/types";
 import { useCart } from "@/context/cart-context";
-import { ShoppingBag, Check, ShieldCheck, Truck } from "lucide-react";
+import { ShoppingBag, Check } from "lucide-react";
+import { formatMoney } from "@/lib/shopify/money";
 
 interface ProductFormProps {
   product: Product;
@@ -54,26 +55,21 @@ export function ProductForm({ product }: ProductFormProps) {
     setTimeout(() => setIsAdded(false), 1500);
   };
 
-  const price = parseFloat(selectedVariant.price?.amount || product.priceRange.minVariantPrice.amount);
-  const compareAtPrice = selectedVariant.compareAtPrice
-    ? parseFloat(selectedVariant.compareAtPrice.amount)
-    : null;
+  const price = selectedVariant.price ?? product.priceRange.minVariantPrice;
+  const compareAtPrice = selectedVariant.compareAtPrice;
 
   return (
     <div className="space-y-6">
       {/* Price Display */}
       <div className="flex items-baseline gap-3">
         <span className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
-          ${price.toFixed(2)}
+          {formatMoney(price)}
         </span>
-        {compareAtPrice && compareAtPrice > price && (
+        {compareAtPrice && Number(compareAtPrice.amount) > Number(price.amount) && (
           <span className="text-lg text-neutral-400 line-through">
-            ${compareAtPrice.toFixed(2)}
+            {formatMoney(compareAtPrice)}
           </span>
         )}
-        <span className="text-xs uppercase font-semibold text-neutral-500">
-          {selectedVariant.price?.currencyCode || product.priceRange.minVariantPrice.currencyCode}
-        </span>
       </div>
 
       {/* Options Selector */}
@@ -158,17 +154,6 @@ export function ProductForm({ product }: ProductFormProps) {
         </button>
       </div>
 
-      {/* Trust guarantees */}
-      <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 space-y-3 bg-neutral-50/60 dark:bg-neutral-900/60">
-        <div className="flex items-center gap-3 text-xs text-neutral-600 dark:text-neutral-400">
-          <Truck className="h-4 w-4 text-neutral-900 dark:text-white flex-shrink-0" />
-          <span>Complimentary carbon-neutral standard delivery over $100</span>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-neutral-600 dark:text-neutral-400">
-          <ShieldCheck className="h-4 w-4 text-neutral-900 dark:text-white flex-shrink-0" />
-          <span>Shopify Storefront 256-bit encrypted checkout</span>
-        </div>
-      </div>
     </div>
   );
 }

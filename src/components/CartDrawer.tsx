@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCart } from "@/context/cart-context";
 import { X, Minus, Plus, Trash2, ShoppingBag, ArrowRight, Loader2 } from "lucide-react";
+import { formatMoney } from "@/lib/shopify/money";
 
 export function CartDrawer() {
   const {
@@ -12,8 +13,6 @@ export function CartDrawer() {
     closeCart,
     cart,
     totalQuantity,
-    subtotal,
-    currency,
     updateItemQuantity,
     removeItem,
     checkoutUrl,
@@ -89,20 +88,21 @@ export function CartDrawer() {
               <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
                 {lines.map(({ node: line }) => {
                   const item = line.merchandise;
-                  const img =
-                    item.product.featuredImage?.url ||
-                    "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=300&auto=format&fit=crop";
+                  const img = item.product.featuredImage?.url;
 
                   return (
                     <li key={line.id} className="py-4 flex gap-4">
                       {/* Thumbnail */}
                       <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800">
-                        <Image
-                          src={img}
-                          alt={item.product.title}
-                          fill
-                          className="object-cover object-center"
-                        />
+                        {img && (
+                          <Image
+                            src={img}
+                            alt={item.product.title}
+                            fill
+                            sizes="80px"
+                            className="object-cover object-center"
+                          />
+                        )}
                       </div>
 
                       {/* Details */}
@@ -111,7 +111,7 @@ export function CartDrawer() {
                           <div className="flex justify-between text-sm font-medium text-neutral-900 dark:text-white">
                             <h4 className="line-clamp-1">{item.product.title}</h4>
                             <p className="ml-2 font-semibold">
-                              ${parseFloat(line.cost.totalAmount.amount).toFixed(2)}
+                              {formatMoney(line.cost.totalAmount)}
                             </p>
                           </div>
                           {item.title && item.title !== "Default Title" && (
@@ -165,10 +165,7 @@ export function CartDrawer() {
             <div className="border-t border-neutral-200 dark:border-neutral-800 px-6 py-5 space-y-4 bg-neutral-50/50 dark:bg-neutral-900/50">
               <div className="flex items-center justify-between text-base font-semibold text-neutral-900 dark:text-white">
                 <span>Subtotal</span>
-                <span>
-                  {currency === "EUR" ? "€" : "$"}
-                  {parseFloat(subtotal).toFixed(2)} {currency}
-                </span>
+                <span>{cart && formatMoney(cart.cost.subtotalAmount)}</span>
               </div>
               <p className="text-xs text-neutral-500">
                 Taxes and shipping calculated securely on Shopify checkout.
