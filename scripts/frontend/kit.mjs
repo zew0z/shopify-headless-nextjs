@@ -41,7 +41,7 @@ export function kitFiles(kitRoot, appRoot) {
   const kitApp = path.relative(kitRoot, path.dirname(path.dirname(sdkDir)));
   const kitPrefix = kitApp ? `${kitApp}/` : "";
   const sdk = readdirSync(sdkDir)
-    .filter((f) => f.endsWith(".ts"))
+    .filter((f) => /\.tsx?$/.test(f))
     .map((f) => ({ from: `${kitPrefix}lib/shopify/${f}`, to: `${appRoot}lib/shopify/${f}` }));
   const routes = ROUTES.map((r) => ({
     from: `${kitPrefix}app/api/${r}/route.ts`,
