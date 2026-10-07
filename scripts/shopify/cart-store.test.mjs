@@ -83,3 +83,50 @@ test("cartLines flattens Shopify's lines and hides 'Default Title'", () => {
   assert.equal(view.image, image);
   assert.deepEqual(cartLines(null), []);
 });
+
+const GONE = "Shopify Cart Error: The specified cart does not exist.";
+
+test("add to a cart Shopify reports as not existing (an error, not null) starts a new one", async () => {
+  const calls = [];
+  const action = async (body) => {
+    calls.push(body.action);
+    if (body.action === "add") throw new Error(GONE);
+    return cart("gid://shopify/Cart/new");
+  };
+  const storage = memory("gid://shopify/Cart/old");
+  const store = createCartStore({ action, storage });
+  await store.add([{ merchandiseId: "v1", quantity: 1 }]);
+  assert.deepEqual(calls, ["add", "create"]);
+  assert.equal(storage.get(), "gid://shopify/Cart/new");
+  assert.equal(store.getState().error, null);
+  assert.equal(store.getState().cart.id, "gid://shopify/Cart/new");
+});
+
+test("update, remove and discount on a cart that no longer exists drop it and say so", async () => {
+  for (const change of [(s) => s.update("l1", 2), (s) => s.remove("l1"), (s) => s.applyDiscountCodes(["X"])]) {
+    const storage = memory("gid://shopify/Cart/old");
+    const store = createCartStore({ action: async () => { throw new Error(GONE); }, storage });
+    await change(store);
+    assert.equal(store.getState().cart, null);
+    assert.equal(storage.get(), null);
+    assert.equal(store.getState().error, "Your cart expired. Add the items again.");
+  }
+});
+
+test("other errors on update leave the stored cart alone", async () => {
+  const storage = memory("gid://shopify/Cart/1");
+  const store = createCartStore({ action: async () => { throw new Error("Out of stock"); }, storage });
+  await store.update("l1", 2);
+  assert.equal(storage.get(), "gid://shopify/Cart/1");
+  assert.equal(store.getState().error, "Out of stock");
+});
+
+test("a subscriber that throws once does not freeze later changes", async () => {
+  const store = createCartStore({ action: async () => cart("gid://shopify/Cart/1"), storage: memory() });
+  let first = true;
+  store.subscribe(() => { if (first) { first = false; throw new Error("listener bug"); } });
+  await store.add([{ merchandiseId: "v1", quantity: 1 }]).catch(() => {});
+  await store.add([{ merchandiseId: "v1", quantity: 1 }]);
+  assert.equal(store.getState().cart.id, "gid://shopify/Cart/1");
+  assert.equal(store.getState().busy, false);
+});
