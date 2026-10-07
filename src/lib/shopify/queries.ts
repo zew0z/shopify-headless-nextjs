@@ -2,6 +2,25 @@
  * Shopify Storefront GraphQL Queries & Fragments
  */
 
+/**
+ * A GraphQL document may define each fragment once. productFragment and
+ * collectionFragment both embed imageFragment, so a document that uses both
+ * needs the repeats dropped.
+ */
+export function dedupeFragments(source: string): string {
+  const seen = new Set<string>();
+  return source
+    .split(/(?=^\s*fragment\s)/m)
+    .filter((block) => {
+      const name = block.match(/^\s*fragment\s+(\w+)/)?.[1];
+      if (!name) return true;
+      if (seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    })
+    .join("");
+}
+
 // -------------------------------------------------------------
 // Shared Fragments
 // -------------------------------------------------------------
@@ -128,6 +147,32 @@ export const collectionFragment = /* GraphQL */ `
     }
   }
   ${imageFragment}
+`;
+
+/**
+ * Uses ImageFragment without embedding it, so it is only valid in a document that
+ * also has productFragment (which embeds imageFragment).
+ */
+export const filterFragment = /* GraphQL */ `
+  fragment FilterFragment on Filter {
+    id
+    label
+    type
+    values {
+      id
+      label
+      count
+      input
+      swatch {
+        color
+        image {
+          previewImage {
+            ...ImageFragment
+          }
+        }
+      }
+    }
+  }
 `;
 
 export const cartFragment = /* GraphQL */ `
@@ -311,14 +356,18 @@ export const getCollectionProductsQuery = /* GraphQL */ `
     $after: String
     $sortKey: ProductCollectionSortKeys = COLLECTION_DEFAULT
     $reverse: Boolean = false
+    $filters: [ProductFilter!]
   ) {
     collection(handle: $handle) {
-      products(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse) {
+      products(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse, filters: $filters) {
         pageInfo {
           hasNextPage
           hasPreviousPage
           startCursor
           endCursor
+        }
+        filters {
+          ...FilterFragment
         }
         edges {
           cursor
@@ -329,27 +378,42 @@ export const getCollectionProductsQuery = /* GraphQL */ `
       }
     }
   }
-  ${productFragment}
+  ${dedupeFragments(productFragment + filterFragment)}
 `;
 
-/**
- * A GraphQL document may define each fragment once. productFragment and
- * collectionFragment both embed imageFragment, so a document that uses both
- * needs the repeats dropped.
- */
-export function dedupeFragments(source: string): string {
-  const seen = new Set<string>();
-  return source
-    .split(/(?=^\s*fragment\s)/m)
-    .filter((block) => {
-      const name = block.match(/^\s*fragment\s+(\w+)/)?.[1];
-      if (!name) return true;
-      if (seen.has(name)) return false;
-      seen.add(name);
-      return true;
-    })
-    .join("");
-}
+export const searchProductsQuery = /* GraphQL */ `
+  query SearchProducts(
+    $query: String!
+    $first: Int = 20
+    $after: String
+    $sortKey: SearchSortKeys = RELEVANCE
+    $reverse: Boolean = false
+    $filters: [ProductFilter!]
+  ) {
+    search(query: $query, first: $first, after: $after, sortKey: $sortKey, reverse: $reverse, types: [PRODUCT], productFilters: $filters, unavailableProducts: LAST) {
+      totalCount
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+      productFilters {
+        ...FilterFragment
+      }
+      edges {
+        cursor
+        node {
+          __typename
+          ... on Product {
+            ...ProductFragment
+          }
+        }
+      }
+    }
+  }
+  ${dedupeFragments(productFragment + filterFragment)}
+`;
 
 export const predictiveSearchQuery = /* GraphQL */ `
   query PredictiveSearch(

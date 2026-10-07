@@ -7,7 +7,7 @@ test("loads every real SDK query and mutation, fragments inlined, nothing left t
   const names = docs.map((d) => d.name);
   assert.ok(names.includes("getProductsQuery"));
   assert.ok(names.includes("createCartMutation"));
-  assert.equal(docs.length, 17);
+  assert.equal(docs.length, 18);
   for (const d of docs) {
     assert.match(d.query.trim(), /^(query|mutation)\b/, d.name);
     assert.ok(!d.query.includes("${"), `${d.name} still has an unresolved interpolation`);

@@ -19,6 +19,10 @@ import {
   CartUserError,
   ShopInfo,
   ConnectionHealthCheck,
+  PageInfo,
+  Filter,
+  ProductPage,
+  SearchProductsOptions,
 } from "./types";
 import {
   shopQuery,
@@ -28,6 +32,7 @@ import {
   getCollectionsQuery,
   getCollectionByHandleQuery,
   getCollectionProductsQuery,
+  searchProductsQuery,
   predictiveSearchQuery,
   getCartQuery,
 } from "./queries";
@@ -150,6 +155,14 @@ export async function checkShopifyConnection(): Promise<ConnectionHealthCheck> {
 // Product Operations
 // -------------------------------------------------------------
 
+type Edges<T> = { pageInfo: PageInfo; edges: Array<{ node: T }>; filters?: Filter[] };
+
+/** Shopify answered without an error but without the data we asked for. */
+function dataOrThrow<T>(data: T | undefined): T {
+  if (!data) throw new ShopifyError("Shopify returned no data", 502);
+  return data;
+}
+
 /**
  * Fetches a list of products with optional query filtering, sorting, and pagination.
  *
@@ -157,13 +170,14 @@ export async function checkShopifyConnection(): Promise<ConnectionHealthCheck> {
  * const products = await getProducts({ limit: 12, sortKey: "PRICE", reverse: true });
  */
 export async function getProducts(options?: GetProductsOptions): Promise<Product[]> {
+  return (await getProductsPage(options)).products;
+}
+
+/** One page of products plus what the next page needs. */
+export async function getProductsPage(options?: GetProductsOptions): Promise<ProductPage> {
   requireShopify();
 
-  const res = await shopifyFetch<{
-    products: {
-      edges: Array<{ node: Product }>;
-    };
-  }>({
+  const res = await shopifyFetch<{ products: Edges<Product> }>({
     query: getProductsQuery,
     variables: {
       first: options?.limit || 20,
@@ -177,7 +191,38 @@ export async function getProducts(options?: GetProductsOptions): Promise<Product
     revalidate: options?.revalidate,
   });
 
-  return res.body.data?.products.edges.map((e) => e.node) || [];
+  const conn = dataOrThrow(res.body.data).products;
+  return { products: conn.edges.map((e) => e.node), pageInfo: conn.pageInfo, filters: [] };
+}
+
+/** A full search results page: products only, with the total and Shopify's filters. */
+export async function searchProducts(options: SearchProductsOptions): Promise<ProductPage> {
+  requireShopify();
+
+  const res = await shopifyFetch<{
+    search: { totalCount: number; pageInfo: PageInfo; productFilters: Filter[]; edges: Array<{ node: Product & { __typename: string } }> };
+  }>({
+    query: searchProductsQuery,
+    variables: {
+      query: options.query,
+      first: options.limit || 20,
+      after: options.cursor,
+      sortKey: options.sortKey || "RELEVANCE",
+      reverse: options.reverse || false,
+      filters: options.filters,
+    },
+    cache: options.cache ?? CATALOGUE_CACHE,
+    tags: ["products"],
+    revalidate: options.revalidate,
+  });
+
+  const s = dataOrThrow(res.body.data).search;
+  return {
+    products: s.edges.map((e) => e.node).filter((n) => n.__typename === "Product"),
+    pageInfo: s.pageInfo,
+    filters: s.productFilters,
+    totalCount: s.totalCount,
+  };
 }
 
 /**
@@ -319,15 +364,14 @@ export async function getCollection(handle: string): Promise<Collection | null> 
  * Fetches products belonging to a collection by handle.
  */
 export async function getCollectionProducts(options: GetCollectionProductsOptions): Promise<Product[]> {
+  return (await getCollectionProductsPage(options))?.products ?? [];
+}
+
+/** One page of a collection's products, with the filters Shopify offers for it. Null when the collection does not exist. */
+export async function getCollectionProductsPage(options: GetCollectionProductsOptions): Promise<ProductPage | null> {
   requireShopify();
 
-  const res = await shopifyFetch<{
-    collection: {
-      products: {
-        edges: Array<{ node: Product }>;
-      };
-    } | null;
-  }>({
+  const res = await shopifyFetch<{ collection: { products: Edges<Product> } | null }>({
     query: getCollectionProductsQuery,
     variables: {
       handle: options.handle,
@@ -335,13 +379,16 @@ export async function getCollectionProducts(options: GetCollectionProductsOption
       after: options.cursor,
       sortKey: options.sortKey || "COLLECTION_DEFAULT",
       reverse: options.reverse || false,
+      filters: options.filters,
     },
     cache: options.cache ?? CATALOGUE_CACHE,
     tags: ["collections", `collection-${options.handle}`, "products"],
     revalidate: options.revalidate,
   });
 
-  return res.body.data?.collection?.products.edges.map((e) => e.node) || [];
+  const conn = dataOrThrow(res.body.data).collection?.products;
+  if (!conn) return null;
+  return { products: conn.edges.map((e) => e.node), pageInfo: conn.pageInfo, filters: conn.filters ?? [] };
 }
 
 // -------------------------------------------------------------

@@ -122,6 +122,58 @@ export interface GetProductsOptions {
 }
 
 // -------------------------------------------------------------
+// Filters, Pages & Search
+// -------------------------------------------------------------
+
+export interface ProductFilterInput {
+  available?: boolean;
+  price?: { min?: number; max?: number };
+  productType?: string;
+  productVendor?: string;
+  tag?: string;
+  variantOption?: { name: string; value: string };
+  productMetafield?: { namespace: string; key: string; value: string };
+}
+
+export interface FilterValue {
+  id: string;
+  label: string;
+  count: number;
+  /** JSON string: pass JSON.parse(input) back as one ProductFilterInput. */
+  input: string;
+  swatch?: { color: string | null; image: { previewImage: ShopifyImage | null } | null } | null;
+}
+
+export interface Filter {
+  id: string;
+  label: string;
+  type: "LIST" | "PRICE_RANGE" | "BOOLEAN";
+  values: FilterValue[];
+}
+
+export interface ProductPage {
+  products: Product[];
+  pageInfo: PageInfo;
+  /** Filters Shopify offers for this list (empty for getProductsPage). */
+  filters: Filter[];
+  /** Only for searchProducts. */
+  totalCount?: number;
+}
+
+export type SearchSortKey = "RELEVANCE" | "PRICE";
+
+export interface SearchProductsOptions {
+  query: string;
+  limit?: number;
+  cursor?: string;
+  sortKey?: SearchSortKey;
+  reverse?: boolean;
+  filters?: ProductFilterInput[];
+  cache?: RequestCache;
+  revalidate?: number;
+}
+
+// -------------------------------------------------------------
 // Predictive Search
 // -------------------------------------------------------------
 
@@ -168,6 +220,7 @@ export interface GetCollectionProductsOptions {
   reverse?: boolean;
   limit?: number;
   cursor?: string;
+  filters?: ProductFilterInput[];
   cache?: RequestCache;
   revalidate?: number;
 }
