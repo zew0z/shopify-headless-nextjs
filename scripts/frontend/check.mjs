@@ -41,5 +41,6 @@ export function checkWiring(dir) {
       ...(usesCart ? [] : ["nothing calls /api/cart"]),
       ...(usesCheckoutUrl ? [] : ["nothing uses cart.checkoutUrl"]),
     ]),
+    result("Prices use the currency Shopify returns, not a hardcoded symbol", audit.hardcodedMoney.map((m) => `${m.file}:${m.line} ${m.what}`)),
   ];
 }

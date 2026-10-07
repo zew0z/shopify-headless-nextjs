@@ -69,6 +69,30 @@ export function findCachingOff(dir, files) {
   return found;
 }
 
+const SYMBOL = "[€£¥₹]";
+const HARDCODED_MONEY = [
+  new RegExp(`${SYMBOL}\\s*\\$?\\{`), // €{price}, `€${price}`
+  new RegExp(`\\}\\s*${SYMBOL}`), // {price} €
+  /\$\$\{/, // `$${price}`
+  />\s*\$\{[^}]*(price|amount|total|cost)/i, // <span>${price}</span>
+  new RegExp(`["'\`]\\s*(${SYMBOL}|\\$)\\s*["'\`]`), // "€" + price
+  new RegExp(`${SYMBOL}\\s*\\d|\\d\\s*${SYMBOL}`), // over €50
+  /\bcurrency\s*:\s*["'`][A-Z]{3}["'`]/, // currency: "EUR"
+];
+const COMMENT = /^\s*(\/\/|\/\*|\*)/;
+const TEST_FILE = /(^|\/)(__tests__|e2e[^/]*|tests?)\/|\.(test|spec)\.[jt]sx?$/;
+
+/** Prices shown with a currency the frontend chose instead of the one Shopify returned. */
+export function findHardcodedMoney(dir, files) {
+  const found = [];
+  eachLine(dir, files, (file, line, text) => {
+    if (COMMENT.test(text)) return;
+    const m = HARDCODED_MONEY.map((p) => p.exec(text)).find(Boolean);
+    if (m) found.push({ file, line, what: m[0].trim().slice(0, 40) });
+  });
+  return found;
+}
+
 /** Shopify serves product images from cdn.shopify.com; next/image refuses hosts it was not told about. */
 export function checkImages(dir) {
   const config = ["next.config.ts", "next.config.mjs", "next.config.js", "next.config.cjs"].find((f) => existsSync(path.join(dir, f)));
@@ -89,6 +113,8 @@ export function auditFrontend(dir) {
   const stack = detectStack(dir);
   const files = (existsSync(dir) ? listSourceFiles(dir) : []).filter((file) => !isKitRoute(dir, file));
   const productData = findProductData(dir, files);
+  // Old product data files are already reported as hardcoded products; tests never reach a customer.
+  const priceFiles = files.filter((f) => !productData.some((d) => d.file === f) && !TEST_FILE.test(f));
   return {
     stack,
     productData,
@@ -96,6 +122,7 @@ export function auditFrontend(dir) {
     fakeApis: findFakeApis(dir, files, productData),
     cart: findCart(dir, files),
     cachingOff: findCachingOff(dir, files),
+    hardcodedMoney: findHardcodedMoney(dir, priceFiles),
     images: checkImages(dir),
   };
 }
@@ -104,7 +131,7 @@ const places = (n) => `${n} place${n === 1 ? "" : "s"}`;
 
 /** The audit in plain words, most important line first. */
 export function summariseAudit(audit) {
-  const { stack, productData, dataReaders, fakeApis, cart, cachingOff, images } = audit;
+  const { stack, productData, dataReaders, fakeApis, cart, cachingOff, hardcodedMoney, images } = audit;
   const lines = [stack.supported ? `Kit fits: ${stack.reason}` : `Stop: ${stack.reason}`];
   const total = productData.reduce((sum, d) => sum + d.count, 0);
   if (productData.length) {
@@ -128,6 +155,10 @@ export function summariseAudit(audit) {
     lines.push(`Caching is switched off in ${places(cachingOff.length)} (pages showing products must not do this):`);
     for (const c of cachingOff) lines.push(`  ${c.file}:${c.line} ${c.what}`);
   } else lines.push("Nothing switches caching off.");
+  if (hardcodedMoney.length) {
+    lines.push(`Prices with a hardcoded currency in ${places(hardcodedMoney.length)} (use formatMoney with Shopify's currency):`);
+    for (const m of hardcodedMoney) lines.push(`  ${m.file}:${m.line} ${m.what}`);
+  } else lines.push("No hardcoded currency symbols found.");
   lines.push(`Images: ${images.note}`);
   return lines;
 }

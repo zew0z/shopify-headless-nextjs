@@ -19,6 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function Home() { const live = await getProducts(); return null; }`,
   "src/components/Grid.tsx": `const res = await fetch("/api/products");`,
   "src/components/Cart.tsx": `export const Cart = () => <a href="/checkout">Checkout</a>;`,
+  "src/components/Price.tsx": `export const Price = ({ p }) => <span>€{p}</span>;`,
 };
 
 const WIRED = {
@@ -43,12 +44,13 @@ test("a frontend still on its own data fails every wiring check, with places", (
   assert.deepEqual(r["Pages that show products are cached"].where, ['src/app/page.tsx:3 dynamic = "force-dynamic"']);
   assert.equal(r["Shopify images are allowed"].ok, false);
   assert.equal(r["The cart talks to Shopify and checkout uses Shopify's checkoutUrl"].ok, false);
+  assert.deepEqual(r["Prices use the currency Shopify returns, not a hardcoded symbol"].where, ["src/components/Price.tsx:1 €{"]);
 });
 
 test("a wired frontend passes every check, even with its old data file still on disk and an uncached cart page", () => {
   const results = checkWiring(makeFixture(WIRED));
   assert.deepEqual(results.filter((r) => !r.ok), []);
-  assert.equal(results.length, 6);
+  assert.equal(results.length, 7);
 });
 
 test("a cart wired through the kit's cartAction, as the wiring guide shows, talks to Shopify", () => {
@@ -63,6 +65,11 @@ const go = (cart) => { window.location.href = cart.checkoutUrl; };`,
     )
   );
   assert.deepEqual(r["The cart talks to Shopify and checkout uses Shopify's checkoutUrl"].where, []);
+});
+
+test("an old product data file with prices in it is left to the hardcoded-products check", () => {
+  const r = byWhat(checkWiring(makeFixture({ ...WIRED, "src/data/products.ts": `export const products = [{ title: "A", price: "€1" }, { title: "B", price: "€2" }];` })));
+  assert.deepEqual(r["Prices use the currency Shopify returns, not a hardcoded symbol"].where, []);
 });
 
 test("a frontend without the kit fails the first check", () => {

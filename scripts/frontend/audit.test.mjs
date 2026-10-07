@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { listSourceFiles } from "./walk.mjs";
-import { auditFrontend, checkImages, findCachingOff, findCart, summariseAudit } from "./audit.mjs";
+import { auditFrontend, checkImages, findCachingOff, findCart, findHardcodedMoney, summariseAudit } from "./audit.mjs";
 import { makeFixture } from "../test-support/fixture.mjs";
 
 const scan = (files, fn) => {
@@ -61,6 +61,50 @@ test("everything that switches caching off is found, and imports alone are not",
     { file: "src/lib/data.ts", line: 3, what: 'cache: "no-store"' },
     { file: "src/lib/data.ts", line: 4, what: "connection()" },
   ]);
+});
+
+test("prices with a hardcoded currency are found; Shopify-formatted prices, ordinary strings and comments are not", () => {
+  const found = scan(
+    {
+      "src/components/Card.tsx": [
+        "<span>€{product.price}</span>",
+        "<span>{product.price} €</span>",
+        "<span>${product.price.toFixed(2)}</span>",
+        "const label = `$${price}`;",
+        'const eur = "€" + price;',
+        'new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR" });',
+        "<p>Free delivery over €50</p>",
+        "<span>{total}£</span>",
+      ].join("\n"),
+      "src/components/Fine.tsx": [
+        "<span>{formatMoney(product.price, lang)}</span>",
+        "const greeting = `Hello ${name}`;",
+        "const row = `<b>${name}</b>`;",
+        "// prices used to be shown as €{price}",
+        'const s = text.replace(/(\\d+)/, "$1");',
+        "new Intl.NumberFormat(lang, { style: \"currency\", currency: money.currencyCode });",
+        "<p>Order before 5pm</p>",
+      ].join("\n"),
+    },
+    findHardcodedMoney
+  );
+  assert.deepEqual(
+    found.map((f) => `${f.file}:${f.line}`),
+    [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `src/components/Card.tsx:${n}`)
+  );
+  assert.ok(found.every((f) => f.what.length > 0 && f.what.length <= 40), "each finding names what it matched, briefly");
+});
+
+test("test files are never shown to a customer, so their prices are not reported", () => {
+  const audit = auditFrontend(
+    makeFixture({
+      "package.json": { dependencies: { next: "16" } },
+      "src/components/Price.test.tsx": `expect(render(<Price />)).toContain("€2");`,
+      "src/components/__tests__/cart.tsx": `expect(total).toBe("€4");`,
+      "e2e-tests/checkout.spec.ts": `await expect(page.getByText("€4")).toBeVisible();`,
+    })
+  );
+  assert.deepEqual(audit.hardcodedMoney, []);
 });
 
 test("images need cdn.shopify.com allowed, or optimisation off", () => {
