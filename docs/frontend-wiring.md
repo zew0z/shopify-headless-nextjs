@@ -71,6 +71,8 @@ If the frontend called its own fake API (`fetch("/api/products")`), replace the 
 | search box (type-ahead) | `GET /api/search?q=...` (already installed) or `predictiveSearch(q)` on the server |
 | header and footer links, policies, info pages | see "Header, footer, policies and pages" |
 
+`/api/search` answers `502 { error }` when Shopify fails, so a search box must check `res.ok` before it reads `.products`.
+
 A product or collection that is not found returns `null`: call `notFound()` from `next/navigation`. A Shopify failure throws; let it reach the frontend's `error.tsx` (kit-install adds one when they have none) rather than catching it and showing something else.
 
 ### 4. Lists, load more and filters
@@ -148,7 +150,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
 - `getShop()` gives `name`, `description`, `primaryDomain` and `brand` (slogan, logo). Use them for the logo text and the footer line.
 - `getMenu(handle)` returns `null` when the menu does not exist. Shopify's own menus are `"main-menu"` and `"footer"`.
-- `menuLinks(menu, { hosts, routes })` turns Shopify's full URLs into paths on this site and marks outside links `external`. A link to a path with no matching route is removed from `links` and returned in `dropped`: list every dropped link for the owner (they either need a page here or a different link in Shopify).
+- `menuLinks(menu, { hosts, routes })` turns Shopify's full URLs into paths on this site and marks outside links `external`. A link to a path with no matching route is removed from `links` and returned in `dropped`; if it has sub-links that do have a route, those move up into its place in `links`. List every dropped link for the owner (they either need a page here or a different link in Shopify).
 - `getPolicies()` lists the policies the shop has written (each has `title`, `handle`, `body`) and `getPolicy(handle)` reads one; they feed `/policies/[handle]`. Link the footer from `getPolicies()`, not from a typed list. The `body` is HTML from Shopify. `getPolicy` returns `null` for a policy the shop has not written: call `notFound()`.
 - `getPage(handle)` feeds `/pages/[handle]` (About, FAQ). Same: `null` means `notFound()`.
 - These reads are cached for one hour (Shopify sends no webhooks for them), so an edit in the admin shows up within the hour.

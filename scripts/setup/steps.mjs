@@ -23,7 +23,7 @@ export const STEPS = [
     owner: "code",
     needs: ["frontend-audit"],
     instructions:
-      "From the kit repo: pnpm shop-setup kit-install <path> --dry-run, show the owner what it adds, then run it without --dry-run (it also adds error.tsx and global-error.tsx, and a CLAUDE.md that points at AGENTS.md, when they are missing). A conflict means the frontend already has a file or script with that name, usually its own fake app/api route: read it, note what it does for the wiring, remove or rename it, and run again. Then in the received repo: pnpm install, pnpm test:scripts, commit. From here on, work in the received repo; its store-setup.state.json already has this step and the audit done.",
+      "From the kit repo: pnpm shop-setup kit-install <path> --dry-run, show the owner what it adds, then run it without --dry-run (it also adds error.tsx and global-error.tsx, and a CLAUDE.md that points at AGENTS.md, when they are missing). A conflict means the frontend already has a file or script with that name, usually its own fake app/api route: read it, note what it does for the wiring, rename it (for example app/api/search-old/) so the kit's route can go in, point their callers at the renamed path until the wiring replaces them, and delete it under the dead-code rule once nothing calls it. Then run kit-install again. After that, in the received repo: pnpm install, pnpm test:scripts, commit. From here on, work in the received repo; its store-setup.state.json already has this step and the audit done.",
     automation: "kit-install",
   },
   {
