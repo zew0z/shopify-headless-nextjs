@@ -189,3 +189,37 @@ test("the kit's own API routes are not part of the received frontend's audit, it
     ["src/app/api/search/route.ts", "src/app/page.tsx"]
   );
 });
+
+test("money matches keep the whole amount and catch a currency label", () => {
+  const dir = makeFixture({ "src/components/Note.tsx": 'export const n = <p>Free shipping over €60 and €1,299.00</p>;\nexport const l = <legend>Price (€)</legend>;\n' });
+  const found = findHardcodedMoney(dir, ["src/components/Note.tsx"]).map((m) => m.what);
+  assert.ok(found.some((w) => w.includes("€60")), found.join());
+  assert.ok(found.some((w) => w.includes("(€)")), found.join());
+});
+
+test("site content, invented fields and a card form are reported", () => {
+  const dir = makeFixture({
+    "package.json": { dependencies: { next: "16.3.4" } },
+    "src/app/page.tsx": 'import { headerMenu } from "@/data/navigation";\nimport { policies } from "@/data/policies";\nexport default function P() { return null; }\n',
+    "src/data/navigation.ts": 'export const headerMenu = [{ label: "Shop", href: "/shop" }, { label: "About", href: "/pages/about" }];\n',
+    "src/data/policies.ts": `export const policies = [{ handle: "refund", body: "${"x".repeat(220)}" }];\n`,
+    "src/data/products.ts": 'export type P = { name: string; price: number; rating: number; reviewCount: number };\n',
+    "src/app/checkout/Form.tsx": '<input name="cardNumber" placeholder="Card number" />\n',
+  });
+  const audit = auditFrontend(dir);
+  assert.deepEqual(audit.siteData.map((s) => s.file).sort(), ["src/data/navigation.ts", "src/data/policies.ts"]);
+  assert.ok(audit.inventedFields.some((f) => f.what === "rating"));
+  assert.equal(audit.paymentForms[0].file, "src/app/checkout/Form.tsx");
+  assert.match(summariseAudit(audit).join("\n"), /payment form/i);
+});
+
+test("files nothing imports are listed as unused and skipped by the money check", () => {
+  const dir = makeFixture({
+    "package.json": { dependencies: { next: "16.3.4" } },
+    "src/app/page.tsx": "export default function P() { return null; }\n",
+    "src/data/site.ts": 'export const announcement = "Free shipping over €60";\n',
+  });
+  const audit = auditFrontend(dir);
+  assert.deepEqual(audit.unused, ["src/data/site.ts"]);
+  assert.equal(audit.hardcodedMoney.length, 0);
+});

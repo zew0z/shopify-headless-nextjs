@@ -1,7 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { detectStack } from "./stack.mjs";
-import { findDataReaders, findFakeApis, findProductData } from "./sources.mjs";
+import {
+  findDataReaders,
+  findFakeApis,
+  findImporters,
+  findInventedFields,
+  findPaymentForms,
+  findProductData,
+  findSiteData,
+  TEST_FILE,
+} from "./sources.mjs";
 import { listSourceFiles } from "./walk.mjs";
 
 const read = (dir, file) => readFileSync(path.join(dir, file), "utf8");
@@ -76,14 +85,14 @@ const HARDCODED_MONEY = [
   /\$\$\{/, // `$${price}`
   />\s*\$\{[^}]*(price|amount|total|cost)/i, // <span>${price}</span>
   new RegExp(`["'\`]\\s*(${SYMBOL}|\\$)\\s*["'\`]`), // "€" + price
-  new RegExp(`${SYMBOL}\\s*\\d|\\d\\s*${SYMBOL}`), // over €50
+  new RegExp(`${SYMBOL}\\s*\\d[\\d.,]*|\\d[\\d.,]*\\s*${SYMBOL}`), // over €50, €1,299.00
+  /\((€|£|\$|EUR|USD|GBP)\)/, // "Price (€)": a currency label with no number
   /\bcurrency\s*:\s*["'`][A-Z]{3}["'`]/, // currency: "EUR"
 ];
 // "Only $5". Not on lines calling .replace, where "$1" is a capture group.
 const DOLLAR_AMOUNT = /(^|[\s>"'`(])\$\d/;
 const REPLACE_CALL = /\.replace(All)?\(/;
 const COMMENT = /^\s*(\/\/|\/\*|\*)/;
-const TEST_FILE = /(^|\/)(__tests__|e2e[^/]*|tests?)\/|\.(test|spec)\.[jt]sx?$/;
 
 /** Prices shown with a currency the frontend chose instead of the one Shopify returned. */
 export function findHardcodedMoney(dir, files) {
@@ -92,7 +101,7 @@ export function findHardcodedMoney(dir, files) {
     if (COMMENT.test(text)) return;
     const patterns = REPLACE_CALL.test(text) ? HARDCODED_MONEY : [...HARDCODED_MONEY, DOLLAR_AMOUNT];
     const m = patterns.map((p) => p.exec(text)).find(Boolean);
-    if (m) found.push({ file, line, what: m[0].trim().slice(0, 40) });
+    if (m) found.push({ file, line, what: m[0].trim().replace(/[.,]+$/, "").slice(0, 40) });
   });
   return found;
 }
@@ -117,13 +126,22 @@ export function auditFrontend(dir) {
   const stack = detectStack(dir);
   const files = (existsSync(dir) ? listSourceFiles(dir) : []).filter((file) => !isKitRoute(dir, file));
   const productData = findProductData(dir, files);
+  const siteData = findSiteData(dir, files, productData);
+  // Data files nothing imports are never shown to a customer, so what they hold is not a live problem.
+  const importers = findImporters(dir, files);
+  const dataFiles = new Set([...productData.map((d) => d.file), ...siteData.map((d) => d.file), ...files.filter((f) => /(^|\/)data\//.test(f))]);
+  const unused = [...dataFiles].filter((f) => !importers.get(f).length).sort();
   // Old product data files are already reported as hardcoded products; tests never reach a customer.
-  const priceFiles = files.filter((f) => !productData.some((d) => d.file === f) && !TEST_FILE.test(f));
+  const priceFiles = files.filter((f) => !productData.some((d) => d.file === f) && !unused.includes(f) && !TEST_FILE.test(f));
   return {
     stack,
     productData,
     dataReaders: findDataReaders(dir, files, productData),
     fakeApis: findFakeApis(dir, files, productData),
+    siteData,
+    inventedFields: findInventedFields(dir, files),
+    paymentForms: findPaymentForms(dir, files),
+    unused,
     cart: findCart(dir, files),
     cachingOff: findCachingOff(dir, files),
     hardcodedMoney: findHardcodedMoney(dir, priceFiles),
@@ -135,8 +153,12 @@ const places = (n) => `${n} place${n === 1 ? "" : "s"}`;
 
 /** The audit in plain words, most important line first. */
 export function summariseAudit(audit) {
-  const { stack, productData, dataReaders, fakeApis, cart, cachingOff, hardcodedMoney, images } = audit;
+  const { stack, productData, dataReaders, fakeApis, siteData, inventedFields, paymentForms, unused, cart, cachingOff, hardcodedMoney, images } = audit;
   const lines = [stack.supported ? `Kit fits: ${stack.reason}` : `Stop: ${stack.reason}`];
+  if (paymentForms.length) {
+    lines.push(`Most urgent: ${places(paymentForms.length)} with a card payment form. Card details must never be typed into this site; Shopify's checkout takes the payment, so remove it:`);
+    for (const f of paymentForms) lines.push(`  ${f.file}:${f.line} ${f.what}`);
+  }
   const total = productData.reduce((sum, d) => sum + d.count, 0);
   if (productData.length) {
     lines.push(`${total} hardcoded products in ${places(productData.length)}:`);
@@ -163,6 +185,18 @@ export function summariseAudit(audit) {
     lines.push(`Prices with a hardcoded currency in ${places(hardcodedMoney.length)} (use formatMoney with Shopify's currency):`);
     for (const m of hardcodedMoney) lines.push(`  ${m.file}:${m.line} ${m.what}`);
   } else lines.push("No hardcoded currency symbols found.");
+  if (siteData.length) {
+    lines.push(`Menus, policies, pages or store claims typed into the code in ${places(siteData.length)} (read them from Shopify, hide what Shopify cannot supply):`);
+    for (const d of siteData) lines.push(`  ${d.file}:${d.line} ${d.what}`);
+  }
+  if (inventedFields.length) {
+    lines.push(`Fields Shopify does not give by default (ratings, stock counts, badges...) in ${places(inventedFields.length)}: show them only if Shopify supplies them:`);
+    for (const f of inventedFields) lines.push(`  ${f.file}:${f.line} ${f.what}`);
+  }
+  if (unused.length) {
+    lines.push(`${unused.length} unused hardcoded data file${unused.length === 1 ? "" : "s"} (nothing imports ${unused.length === 1 ? "it" : "them"}), ask the owner before deleting:`);
+    for (const f of unused) lines.push(`  ${f}`);
+  }
   lines.push(`Images: ${images.note}`);
   return lines;
 }
