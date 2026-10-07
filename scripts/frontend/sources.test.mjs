@@ -209,3 +209,52 @@ test("a call to a Shopify-backed dynamic route is not a fake API; one serving ha
   const apis = findFakeApis(dir, files).map((a) => `${a.file}:${a.kind}`);
   assert.deepEqual(apis, ["src/app/api/items/[...slug]/route.ts:route", "src/components/Two.tsx:fetch"]);
 });
+
+const TSCONFIG_WITH_COMMENTS = `{
+  // comments and trailing commas are normal in tsconfig
+  "compilerOptions": {
+    /* the star below is inside strings, not a comment */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/*": ["./src/data/*"],
+      "@site": ["./src/data/site.ts"],
+    },
+  },
+}`;
+
+test("importers: a custom alias from tsconfig paths resolves to its folder, even when the names do not line up", () => {
+  const dir = makeFixture({
+    "tsconfig.json": TSCONFIG_WITH_COMMENTS,
+    "src/app/layout.tsx": 'import { site } from "@shared/site";\nimport { a } from "@site";\nimport { n } from "@/data/nav";\n',
+    "src/data/site.ts": "export const site = {};\n",
+    "src/data/nav.ts": "export const n = [];\n",
+    "src/data/other.ts": "export const o = [];\n",
+  });
+  const importers = findImporters(dir, listSourceFiles(dir));
+  assert.deepEqual(importers.get("src/data/site.ts"), ["src/app/layout.tsx"]);
+  assert.deepEqual(importers.get("src/data/nav.ts"), ["src/app/layout.tsx"]);
+  assert.deepEqual(importers.get("src/data/other.ts"), []);
+});
+
+test("importers: with no tsconfig, @data/site still counts as an import of src/data/site.ts", () => {
+  const dir = makeFixture({
+    "src/app/layout.tsx": 'import { site } from "@data/site";\nimport cfg from "@config/theme";\n',
+    "src/data/site.ts": "export const site = {};\n",
+    "src/config/theme.ts": "export default {};\n",
+    "src/data/other.ts": "export const o = [];\n",
+  });
+  const importers = findImporters(dir, listSourceFiles(dir));
+  assert.deepEqual(importers.get("src/data/site.ts"), ["src/app/layout.tsx"]);
+  assert.deepEqual(importers.get("src/config/theme.ts"), ["src/app/layout.tsx"]);
+  assert.deepEqual(importers.get("src/data/other.ts"), []);
+});
+
+test("importers: a broken tsconfig is ignored and the name match still works", () => {
+  const dir = makeFixture({
+    "tsconfig.json": "{ this is not json",
+    "src/app/layout.tsx": 'import { site } from "@data/site";\n',
+    "src/data/site.ts": "export const site = {};\n",
+  });
+  assert.deepEqual(findImporters(dir, listSourceFiles(dir)).get("src/data/site.ts"), ["src/app/layout.tsx"]);
+});

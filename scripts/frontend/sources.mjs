@@ -83,11 +83,79 @@ const ROUTE_FILE = /^(src\/)?app\/api\/.+\/route\.[jt]sx?$/;
 const SDK_IMPORT = /lib\/shopify/;
 const stripExt = (file) => file.replace(/\.[^/.]+$/, "").replace(/\/index$/, "");
 
-export function importsFile(routeFile, spec, dataFile) {
+/** tsconfig.json is JSON with comments and trailing commas: strip both, leaving anything inside strings alone. */
+function stripJsonComments(text) {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j;
+    } else if (c === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n") i++;
+      out += "\n";
+    } else if (c === "/" && text[i + 1] === "*") {
+      const close = text.indexOf("*/", i + 2);
+      i = close === -1 ? text.length : close + 1;
+    } else out += c;
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+
+/**
+ * The import aliases a frontend sets in tsconfig.json (or jsconfig.json) `compilerOptions.paths`,
+ * as { pattern, targets } with targets relative to the repo root. A missing or unreadable file gives none:
+ * importsFile also matches aliases by name, so this only has to catch the ones that do not line up.
+ */
+export function readAliases(dir) {
+  for (const name of ["tsconfig.json", "jsconfig.json"]) {
+    let options;
+    try {
+      options = JSON.parse(stripJsonComments(read(dir, name))).compilerOptions;
+    } catch {
+      continue;
+    }
+    if (!options?.paths || typeof options.paths !== "object") continue;
+    const base = options.baseUrl ?? ".";
+    return Object.entries(options.paths).map(([pattern, targets]) => ({
+      pattern,
+      targets: (Array.isArray(targets) ? targets : []).filter((t) => typeof t === "string").map((t) => path.posix.join(base, t)),
+    }));
+  }
+  return [];
+}
+
+function aliasTargets(spec, aliases) {
+  const resolved = [];
+  for (const { pattern, targets } of aliases) {
+    const star = pattern.indexOf("*");
+    if (star === -1) {
+      if (spec === pattern) resolved.push(...targets);
+      continue;
+    }
+    const [head, tail] = [pattern.slice(0, star), pattern.slice(star + 1)];
+    if (spec.length >= head.length + tail.length && spec.startsWith(head) && spec.endsWith(tail)) {
+      const middle = spec.slice(head.length, spec.length - tail.length);
+      resolved.push(...targets.map((t) => t.replace("*", middle)));
+    }
+  }
+  return resolved;
+}
+
+/**
+ * True when `spec`, imported from `routeFile`, points at `dataFile`. Relative paths are resolved. An alias
+ * from tsconfig paths (pass `aliases` from readAliases) is resolved too. Any other non-relative
+ * specifier counts when its path, minus an alias prefix like "@", "@data/" or "~/", is the end of the
+ * file's path: "@data/site" matches src/data/site.ts. Over-matching is the safe direction here.
+ */
+export function importsFile(routeFile, spec, dataFile, aliases = []) {
   const target = stripExt(dataFile);
   if (spec.startsWith(".")) return stripExt(path.posix.join(path.posix.dirname(routeFile), spec)) === target;
-  const rest = spec.replace(/^[@~]\//, "");
-  return target === rest || target.endsWith(`/${stripExt(rest)}`);
+  if (aliasTargets(spec, aliases).some((t) => stripExt(path.posix.normalize(t)) === target)) return true;
+  const rest = stripExt(spec.replace(/^[@~#$]+\/?/, ""));
+  return target === rest || target.endsWith(`/${rest}`);
 }
 
 const DYNAMIC_FOLDER = /^\[{1,2}(\.\.\.)?[^\]]+\]{1,2}$/;
@@ -137,6 +205,7 @@ function routeUsesSdk(dir, target) {
 export function findFakeApis(dir, files, productData = findProductData(dir, files)) {
   const found = [];
   const dataFiles = [...new Set(productData.map((d) => d.file))];
+  const aliases = readAliases(dir);
   for (const file of files) {
     const source = read(dir, file);
     if (ROUTE_FILE.test(file) && SDK_IMPORT.test(source)) continue;
@@ -147,7 +216,7 @@ export function findFakeApis(dir, files, productData = findProductData(dir, file
       }
       if (!ROUTE_FILE.test(file)) return;
       const spec = /\bfrom\s+["']([^"']+)["']/.exec(text)?.[1];
-      const data = spec && dataFiles.find((d) => importsFile(file, spec, d));
+      const data = spec && dataFiles.find((d) => importsFile(file, spec, d, aliases));
       if (data) found.push({ file, line: i + 1, kind: "route", target: data });
     });
   }
@@ -157,12 +226,13 @@ export function findFakeApis(dir, files, productData = findProductData(dir, file
 /** Every import of a hardcoded product file: the places the wiring has to change. */
 export function findDataReaders(dir, files, productData) {
   const dataFiles = [...new Set(productData.map((d) => d.file))];
+  const aliases = readAliases(dir);
   const found = [];
   for (const file of files) {
     if (dataFiles.includes(file)) continue;
     read(dir, file).split("\n").forEach((text, i) => {
       const spec = /\bfrom\s+["']([^"']+)["']/.exec(text)?.[1];
-      const target = spec && dataFiles.find((d) => importsFile(file, spec, d));
+      const target = spec && dataFiles.find((d) => importsFile(file, spec, d, aliases));
       if (target) found.push({ file, line: i + 1, target });
     });
   }
@@ -174,11 +244,12 @@ const IMPORT_SPEC = /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*
 /** For each file, the files that import it. Every import on a line counts, not only the first. */
 export function findImporters(dir, files) {
   const importers = new Map(files.map((f) => [f, []]));
+  const aliases = readAliases(dir);
   for (const file of files) {
     const specs = new Set();
     for (const text of read(dir, file).split("\n")) for (const m of text.matchAll(IMPORT_SPEC)) specs.add(m[2]);
     for (const target of files) {
-      if (target !== file && [...specs].some((spec) => importsFile(file, spec, target))) importers.get(target).push(file);
+      if (target !== file && [...specs].some((spec) => importsFile(file, spec, target, aliases))) importers.get(target).push(file);
     }
   }
   return importers;

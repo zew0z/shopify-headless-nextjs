@@ -223,3 +223,20 @@ test("files nothing imports are listed as unused and skipped by the money check"
   assert.deepEqual(audit.unused, ["src/data/site.ts"]);
   assert.equal(audit.hardcodedMoney.length, 0);
 });
+
+const SITE_FILES = {
+  "package.json": { name: "received", dependencies: { next: "16.2.0" } },
+  "src/data/site.ts": `export const site = { announcement: "Free shipping over €50" };`,
+  "src/app/layout.tsx": `import { site } from "@data/site";\nexport default function Layout({ children }) { return <div>{site.announcement}{children}</div>; }`,
+};
+
+for (const [name, extra] of [
+  ["without a tsconfig", {}],
+  ["with a tsconfig paths entry", { "tsconfig.json": `{ "compilerOptions": { "paths": { "@data/*": ["./src/data/*"], }, }, }` }],
+]) {
+  test(`a layout importing @data/site ${name} makes site.ts used, so its hardcoded price is reported`, () => {
+    const audit = auditFrontend(makeFixture({ ...SITE_FILES, ...extra }));
+    assert.deepEqual(audit.unused, []);
+    assert.deepEqual(audit.hardcodedMoney.map((m) => m.file), ["src/data/site.ts"]);
+  });
+}
