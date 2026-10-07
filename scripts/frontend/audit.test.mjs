@@ -75,6 +75,10 @@ test("prices with a hardcoded currency are found; Shopify-formatted prices, ordi
         'new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR" });',
         "<p>Free delivery over €50</p>",
         "<span>{total}£</span>",
+        "<p>Only $5</p>",
+        'const promo = "Save $10 today";',
+        "<span>$4.99</span>",
+        "Free shipping on orders over $50",
       ].join("\n"),
       "src/components/Fine.tsx": [
         "<span>{formatMoney(product.price, lang)}</span>",
@@ -84,13 +88,16 @@ test("prices with a hardcoded currency are found; Shopify-formatted prices, ordi
         'const s = text.replace(/(\\d+)/, "$1");',
         "new Intl.NumberFormat(lang, { style: \"currency\", currency: money.currencyCode });",
         "<p>Order before 5pm</p>",
+        'const swapped = name.replaceAll(/(a)(b)/g, "$2 $1");',
+        "const amount = /\\$\\d+/;",
+        "const total = item$1 + price$2;",
       ].join("\n"),
     },
     findHardcodedMoney
   );
   assert.deepEqual(
     found.map((f) => `${f.file}:${f.line}`),
-    [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `src/components/Card.tsx:${n}`)
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => `src/components/Card.tsx:${n}`)
   );
   assert.ok(found.every((f) => f.what.length > 0 && f.what.length <= 40), "each finding names what it matched, briefly");
 });

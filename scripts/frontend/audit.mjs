@@ -79,6 +79,9 @@ const HARDCODED_MONEY = [
   new RegExp(`${SYMBOL}\\s*\\d|\\d\\s*${SYMBOL}`), // over €50
   /\bcurrency\s*:\s*["'`][A-Z]{3}["'`]/, // currency: "EUR"
 ];
+// "Only $5". Not on lines calling .replace, where "$1" is a capture group.
+const DOLLAR_AMOUNT = /(^|[\s>"'`(])\$\d/;
+const REPLACE_CALL = /\.replace(All)?\(/;
 const COMMENT = /^\s*(\/\/|\/\*|\*)/;
 const TEST_FILE = /(^|\/)(__tests__|e2e[^/]*|tests?)\/|\.(test|spec)\.[jt]sx?$/;
 
@@ -87,7 +90,8 @@ export function findHardcodedMoney(dir, files) {
   const found = [];
   eachLine(dir, files, (file, line, text) => {
     if (COMMENT.test(text)) return;
-    const m = HARDCODED_MONEY.map((p) => p.exec(text)).find(Boolean);
+    const patterns = REPLACE_CALL.test(text) ? HARDCODED_MONEY : [...HARDCODED_MONEY, DOLLAR_AMOUNT];
+    const m = patterns.map((p) => p.exec(text)).find(Boolean);
     if (m) found.push({ file, line, what: m[0].trim().slice(0, 40) });
   });
   return found;
