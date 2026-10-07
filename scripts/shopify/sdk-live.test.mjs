@@ -42,6 +42,11 @@ test("predictiveSearch: a failed Shopify request throws instead of showing no re
   await assert.rejects(sdk.predictiveSearch("shirt"), sdk.ShopifyError);
 });
 
+test("predictiveSearch: an answer with no data throws instead of showing no results", async () => {
+  stubFetch(() => json(null));
+  await assert.rejects(sdk.predictiveSearch("shirt"), sdk.ShopifyError);
+});
+
 test("predictiveSearch: an empty query makes no request", async () => {
   stubFetch(() => json({}));
   const result = await sdk.predictiveSearch("  ");

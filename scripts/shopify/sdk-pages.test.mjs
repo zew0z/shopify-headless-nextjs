@@ -7,8 +7,10 @@ process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN = "public-test-token";
 const sdk = await loadSdk();
 
 let sent;
+let sentInit;
 function answer(data) {
   globalThis.fetch = async (_url, init) => {
+    sentInit = init;
     sent = JSON.parse(init.body);
     return new Response(JSON.stringify({ data }), { status: 200 });
   };
@@ -51,6 +53,19 @@ test("searchProducts returns products only, with the total and the filters", asy
   assert.equal(page.products[0].handle, "a");
   assert.equal(page.filters.length, 1);
   assert.equal(sent.variables.query, "shirt");
+});
+
+test("searchProducts results are cached for five minutes by default, and callers can override", async () => {
+  const empty = { search: { totalCount: 0, pageInfo, productFilters: [], edges: [] } };
+  answer(empty);
+  await sdk.searchProducts({ query: "shirt" });
+  assert.equal(sentInit.cache, "force-cache");
+  assert.equal(sentInit.next.revalidate, 300);
+  await sdk.searchProducts({ query: "shirt", revalidate: 60 });
+  assert.equal(sentInit.next.revalidate, 60);
+  await sdk.searchProducts({ query: "shirt", cache: "no-store" });
+  assert.equal(sentInit.cache, "no-store");
+  assert.equal(sentInit.next?.revalidate, undefined, "no-store and a revalidate time together make Next warn");
 });
 
 test("paged reads throw when Shopify fails", async () => {

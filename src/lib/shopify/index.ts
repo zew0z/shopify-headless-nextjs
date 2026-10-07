@@ -65,6 +65,7 @@ export * from "./menu";
  * cache and are purged by tag from /api/revalidate when Shopify sends a webhook.
  */
 const CATALOGUE_CACHE: RequestCache = "force-cache";
+const SEARCH_REVALIDATE_SECONDS = 300;
 
 // -------------------------------------------------------------
 // Connection & Health Operations
@@ -181,9 +182,17 @@ export async function getProductsPage(options?: GetProductsOptions): Promise<Pro
   return { products: conn.edges.map((e) => e.node), pageInfo: conn.pageInfo, filters: [] };
 }
 
-/** A full search results page: products only, with the total and Shopify's filters. */
+/**
+ * A full search results page: products only, with the total and Shopify's filters.
+ *
+ * Every query text is its own cache entry, so unlike the other catalogue reads the default is
+ * force-cache with `revalidate: 300` (five minutes): a webhook purges the "products" tag, and
+ * the time limit stops rarely-seen queries from staying stale. Pass `revalidate` for another time,
+ * or `cache: "no-store"` for a fresh answer every time.
+ */
 export async function searchProducts(options: SearchProductsOptions): Promise<ProductPage> {
   requireShopify();
+  const cache = options.cache ?? CATALOGUE_CACHE;
 
   const res = await shopifyFetch<{
     search: { totalCount: number; pageInfo: PageInfo; productFilters: Filter[]; edges: Array<{ node: Product & { __typename: string } }> };
@@ -197,9 +206,10 @@ export async function searchProducts(options: SearchProductsOptions): Promise<Pr
       reverse: options.reverse || false,
       filters: options.filters,
     },
-    cache: options.cache ?? CATALOGUE_CACHE,
+    cache,
     tags: ["products"],
-    revalidate: options.revalidate,
+    // Next warns when a revalidate time comes with no-store, so the default only applies to cached reads.
+    revalidate: options.revalidate ?? (cache === "force-cache" ? SEARCH_REVALIDATE_SECONDS : undefined),
   });
 
   const s = dataOrThrow(res.body.data).search;
@@ -318,13 +328,7 @@ export async function predictiveSearch(
     cache: "no-store",
   });
 
-  return (
-    res.body.data?.predictiveSearch || {
-      queries: [],
-      products: [],
-      collections: [],
-    }
-  );
+  return dataOrThrow(dataOrThrow(res.body.data).predictiveSearch);
 }
 
 // -------------------------------------------------------------
