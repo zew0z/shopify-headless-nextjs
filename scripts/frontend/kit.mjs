@@ -15,7 +15,8 @@ const COPIED_AS_IS = [
 ];
 const SCRIPTS = ["shop-setup", "test:scripts", "test:e2e"];
 const DEV_TOOLS = ["@playwright/test", "typescript"];
-const GITIGNORE = [".env*", "/data/catalog.json", "/test-results/", "/playwright-report/", "frontend-audit.json"];
+// `!.env.example` follows `.env*` so a committed example file is not hidden by it.
+const GITIGNORE = [".env*", "!.env.example", "/data/catalog.json", "/test-results/", "/playwright-report/", "frontend-audit.json"];
 
 export const STORE_SETUP_BLOCK = `# Store setup
 

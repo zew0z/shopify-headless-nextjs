@@ -77,7 +77,19 @@ test("package.json gets the missing scripts and dev tools; a different script wi
 
 test(".gitignore only gains the lines it lacks", () => {
   const plan = planKitInstall({ kitRoot, target: received(), appRoot: "" });
-  assert.deepEqual(plan.gitignore, ["/data/catalog.json", "/test-results/", "/playwright-report/", "frontend-audit.json"]);
+  assert.deepEqual(plan.gitignore, ["!.env.example", "/data/catalog.json", "/test-results/", "/playwright-report/", "frontend-audit.json"]);
+});
+
+test(".gitignore keeps a committed .env.example visible: the un-ignore line follows .env*", () => {
+  const plan = planKitInstall({ kitRoot, target: received({ ".gitignore": "node_modules\n" }), appRoot: "" });
+  const at = plan.gitignore.indexOf(".env*");
+  assert.ok(at >= 0, ".env* is added");
+  assert.equal(plan.gitignore[at + 1], "!.env.example");
+});
+
+test(".gitignore does not add !.env.example when the repo already has it", () => {
+  const plan = planKitInstall({ kitRoot, target: received({ ".gitignore": "node_modules\n.env*\n!.env.example\n" }), appRoot: "" });
+  assert.ok(!plan.gitignore.includes("!.env.example"));
 });
 
 test("the agent instructions are added only when neither AGENTS.md nor CLAUDE.md has them", () => {

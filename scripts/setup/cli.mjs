@@ -22,6 +22,8 @@ import { loadSdkDocuments, validateDocuments } from "../shopify/validate-storefr
 import { shopMismatches, versionStatus } from "../shopify/version.mjs";
 import { bad, heading, info, mask, ok, shopifyEnv, upsertEnv, warn } from "../shopify/env.mjs";
 
+const USAGE = "usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>]";
+const HELP_WORDS = ["--help", "-h", "help"];
 const STATE_FILE = "store-setup.state.json";
 const { command, args, flags } = parseArgs(process.argv.slice(2));
 
@@ -245,7 +247,7 @@ switch (command) {
     if (Object.keys(devDependencies).length) info(`dev tools to add: ${Object.keys(devDependencies).join(", ")}`);
     if (plan.gitignore.length) info(`.gitignore lines to add: ${plan.gitignore.join(" ")}`);
     if (plan.agentsNote) info("agent instructions to add: the # Store setup block");
-    for (const e of plan.extras) info(`left for the next agent: ${e.to}`);
+    for (const e of plan.extras) info(`added: ${e.to} (a starting point, edit to taste)`);
     if (plan.keptErrorPage) info("kept their error page");
     if (hasConflicts(plan)) {
       for (const c of plan.conflicts) bad(`${c.to}: ${c.why}`);
@@ -286,6 +288,6 @@ switch (command) {
     process.exit(failed ? 1 : 0);
   }
   default:
-    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>]");
-    process.exit(command ? 1 : 0);
+    console.log(USAGE);
+    process.exit(command && !HELP_WORDS.includes(command) ? 1 : 0);
 }
