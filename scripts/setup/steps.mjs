@@ -14,7 +14,7 @@ export const STEPS = [
     owner: "code",
     needs: [],
     instructions:
-      "From the kit repo: pnpm shop-setup frontend-audit <path to the received repo>. Tell the owner in plain words what it found: how many hardcoded products and where, fake product APIs, the cart and its checkout button, pages that switch caching off. If it says Stop, do not install anything: tell the owner why and ask whether to move the frontend to Next.js with the App Router (a separate job). Never half-wire a frontend the kit does not support.",
+      "From the kit repo: pnpm shop-setup frontend-audit <path to the received repo>. Tell the owner in plain words what it found: how many hardcoded products and where, fake product APIs, the cart and its checkout button, pages that switch caching off, data typed into the site that Shopify should supply (menus, policy text, store claims), invented fields (ratings, stock counts, badges) and card forms. If it says Stop, do not install anything: tell the owner why and ask whether to move the frontend to Next.js with the App Router (a separate job). Never half-wire a frontend the kit does not support.",
     automation: "frontend-audit",
   },
   {
@@ -23,7 +23,7 @@ export const STEPS = [
     owner: "code",
     needs: ["frontend-audit"],
     instructions:
-      "From the kit repo: pnpm shop-setup kit-install <path> --dry-run, show the owner what it adds, then run it without --dry-run. A conflict means the frontend already has a file or script with that name, usually its own fake app/api route: read it, note what it does for the wiring, remove or rename it, and run again. Then in the received repo: pnpm install, pnpm test:scripts, commit. From here on, work in the received repo; its store-setup.state.json already has this step and the audit done.",
+      "From the kit repo: pnpm shop-setup kit-install <path> --dry-run, show the owner what it adds, then run it without --dry-run (it also adds error.tsx and global-error.tsx, and a CLAUDE.md that points at AGENTS.md, when they are missing). A conflict means the frontend already has a file or script with that name, usually its own fake app/api route: read it, note what it does for the wiring, remove or rename it, and run again. Then in the received repo: pnpm install, pnpm test:scripts, commit. From here on, work in the received repo; its store-setup.state.json already has this step and the audit done.",
     automation: "kit-install",
   },
   {
@@ -32,7 +32,7 @@ export const STEPS = [
     owner: "code",
     needs: ["kit-install"],
     instructions:
-      "Follow docs/frontend-wiring.md, section Catalogue. Keep their components and their product type: write one mapper from the SDK's Product to their type, read products and collections with the SDK in server components, pass the mapped data down. Fields Shopify does not have (ratings, reviews, made-up was-prices) are reported to the owner, never invented. Remove anything that switches caching off on pages that show products, and allow cdn.shopify.com in next.config images.",
+      "Follow docs/frontend-wiring.md, sections Catalogue, Product page and Header, footer, policies and pages. Keep their components and their product type: write one mapper from the SDK's Product to their type, read products and collections with the SDK in server components, pass the mapped data down. Lists use the paged reads (getProductsPage, getCollectionProductsPage, searchProducts) with Shopify's own filters, never a filter over the whole catalogue in memory; the product page gets extra fields from getProduct(handle, { metafields }); menus, policies and info pages come from getMenu, menuLinks, getPolicies and getPage. Fields Shopify does not have (ratings, reviews, made-up was-prices, announcement bar, newsletter) are hidden and listed for the owner, never invented. Remove anything that switches caching off on pages that show products, and allow cdn.shopify.com in next.config images. Done when the code is in and builds against mock.shop or the development store.",
   },
   {
     id: "frontend-cart",
@@ -40,7 +40,7 @@ export const STEPS = [
     owner: "code",
     needs: ["frontend-catalogue"],
     instructions:
-      "Follow docs/frontend-wiring.md, section Cart. Keep their cart UI; replace its state with Shopify's cart through /api/cart (create on the first add, keep the cart id in localStorage, read the cart back on load), show totals from cart.cost, and send the checkout button to cart.checkoutUrl. Every add needs a variant id: if products have several variants and the design has no picker, ask the owner.",
+      "Follow docs/frontend-wiring.md, section Cart. Keep their cart UI; wrap the root layout in CartProvider and use useCart() (import from @/lib/shopify/cart-provider) where their cart context was, show totals from cart.cost, and send the checkout button to checkout(), which opens Shopify's checkout. Every add needs a variant id: if products have several variants and the design has no picker, ask the owner. Done when the code is in and builds against mock.shop or the development store.",
   },
   {
     id: "frontend-check",
@@ -48,7 +48,7 @@ export const STEPS = [
     owner: "code",
     needs: ["frontend-cart", "headless-channel"],
     instructions:
-      "In the received repo: pnpm shop-setup frontend-check, then pnpm build. Then run it with the development store's public Storefront token in .env.local and click through: product list, a product page, add to cart, the checkout button opens Shopify's checkout. Mark done only when all of that passed; say which parts were not run. Ask the owner before deleting their old product data files.",
+      "In the received repo: pnpm shop-setup frontend-check, then pnpm build, pnpm start, and pnpm shop-setup frontend-check --site http://localhost:3000 (it loads the home page and a product page and needs Shopify images on both). Then run it with the development store's public Storefront token in .env.local and click through: product list, a product page, add to cart, the checkout button opens Shopify's checkout. This is the only frontend step that waits for the development store: mark done only after that click-through passed; say which parts were not run. Unused old data files are listed for the owner, not deleted, until they agree.",
     automation: "frontend-check",
   },
   {
