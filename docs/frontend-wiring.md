@@ -57,7 +57,7 @@ export default async function Home() {
 
 If a **client** component imported the data file directly (`"use client"` at the top), move the read to the nearest server parent and add a prop. Do not call the SDK from client components: it would ship the token-using code to the browser and skip the cache.
 
-If the frontend called its own fake API (`fetch("/api/products")`), replace the call with the SDK function and delete the fake route only after nothing calls it.
+If the frontend called its own fake API (`fetch("/api/products")`), replace the call with the SDK function. The fake route is dead code once nothing calls it: see "Dead code" below.
 
 | Their data | SDK function |
 |---|---|
@@ -94,12 +94,13 @@ import { toCardProduct } from "@/lib/shopify-adapter";
 
 export async function loadMore(handle: string, cursor: string, filters: ProductFilterInput[]) {
   const page = await getCollectionProductsPage({ handle, cursor, filters, limit: 12 });
-  if (!page) throw new Error("This collection no longer exists.");
-  return { products: page.products.map(toCardProduct), pageInfo: page.pageInfo };
+  // An expected case: return it, so the shopper can read why.
+  if (!page) return { ok: false as const, message: "This collection no longer exists." };
+  return { ok: true as const, products: page.products.map(toCardProduct), pageInfo: page.pageInfo };
 }
 ```
 
-The button keeps the products it has, appends the returned ones, and stores `pageInfo.endCursor` for the next click. Hide the button when `hasNextPage` is false. If the action throws, show the message near the button and keep the list as it was.
+The button keeps the products it has, appends the returned ones, and stores `pageInfo.endCursor` for the next click. Hide the button when `hasNextPage` is false. When the action returns `ok: false`, show its `message` near the button and keep the list as it was. A Shopify outage is not an expected case: `getCollectionProductsPage` throws and the error reaches `error.tsx`. Return expected cases instead of throwing them, because in production Next replaces a thrown error's message with a generic one and a digest, so the shopper would never see your text.
 
 ### 5. Caching and images
 
@@ -219,7 +220,7 @@ export async function addToCart(variantId: string, quantity = 1) {
 - **Own store only, on load:** if a cart id is stored, `get` it. If that returns `null` (Shopify drops carts after checkout or expiry), remove the stored id and start empty.
 - **Own store only, state:** hold Shopify's cart in their existing context or store. Map it to their line shape for display: `cart.lines.edges[].node` has `id`, `quantity`, `cost.totalAmount` and `merchandise` (the variant: `title`, `price`, `selectedOptions`, and `product.title`, `product.handle`, `product.featuredImage`).
 - **Totals:** show `cart.cost.subtotalAmount` / `cart.cost.totalAmount`. Never add prices up in the browser; Shopify applies discounts and tax.
-- **Checkout button:** `checkout()` from `useCart()` (or `window.location.href = cart.checkoutUrl`). Remove their fake `/checkout` page or form, after asking the owner if it has anything they want to keep.
+- **Checkout button:** `checkout()` from `useCart()` (or `window.location.href = cart.checkoutUrl`). Their fake `/checkout` page and card form are dead code once the button goes to Shopify: see "Dead code" below.
 - **Errors:** show the message near the button and keep the cart as it was. Never pretend an item was added when the request failed.
 
 ### Variants
@@ -237,7 +238,17 @@ Every add needs a **variant id** (`gid://shopify/ProductVariant/...`). A product
 | Newsletter sign-up | Hide unless a sign-up service is connected. Ask. |
 | Hero copy and slogans | Use `shop.name`, `shop.description` and `shop.brand`, or ask the owner for the words. |
 
-`frontend-audit` finds these in their code (invented fields like `rating`, `reviewCount`, `reviews`, `stockLeft`, `badge`, `subscribable`, typed-in menus, policy text and store claims, card payment forms) and `frontend-check` fails while they still reach customers. A card form never stays: payment is Shopify's checkout.
+`frontend-audit` finds these in their code (invented fields like `rating`, `reviewCount`, `reviews`, `stockLeft`, `badge`, `subscribable`, typed-in menus, policy text and store claims, card payment forms) and `frontend-check` fails while they still reach customers. A card form never stays: payment is Shopify's checkout (it is deleted, see "Dead code" below).
+
+## Dead code
+
+Once nothing imports or calls them, the agent deletes, in its own commit, and lists for the owner:
+
+- old code that reads the hardcoded data (helpers like `lib/products.ts`, components like `Stars.tsx`),
+- the fake product API route,
+- the fake checkout page and any card form.
+
+The old data files themselves (`src/data/*`) are not deleted: list them as unused until the owner agrees. Search for imports and calls before each delete, and run `frontend-check` after.
 
 ## Errors
 
@@ -257,7 +268,7 @@ What it does not prove:
 
 - Its products are not the owner's, and its prices are in CAD. Show whatever currency Shopify sends.
 - Search matches loosely, so results can include products that do not obviously fit.
-- It has no collection filters, no swatches, no extra fields (metafields come back `null`), no subscriptions and only two info pages (`contact`, `liquid`). Those parts of the wiring cannot be seen working there: say "unverified" for them. It does have menus, the four policies and stock counts.
+- It has no collection filters, no extra fields (metafields come back `null`), no subscriptions and only two info pages (`contact`, `liquid`). Those parts of the wiring cannot be seen working there: say "unverified" for them. It does have menus, the four policies and stock counts, and its colour options carry swatches (for example the product `hoodie`), so swatches and sold-out greying can be practised there.
 - A cart that no longer exists is handled (adding to it answers "The specified cart does not exist." and the cart store starts a new one), but a nonsense variant id can still give a cart, so error paths cannot be practised there.
 - Its checkout is a demo page that does not show the cart's items.
 

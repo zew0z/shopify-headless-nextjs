@@ -38,6 +38,6 @@ Steps `frontend-audit` → `kit-install` → `frontend-catalogue` → `frontend-
 - Never call the SDK from a `"use client"` file; move the read to a server parent.
 - Never catch a Shopify error and show something else in its place. Errors reach `error.tsx`.
 - Never filter a whole catalogue in memory; use Shopify's filters and pages.
-- Unused old data files are listed, not deleted, until the owner agrees. Same for fake API routes and a fake checkout page.
+- Dead code: once nothing uses them, delete (in their own commit, and list them for the owner) the old code that reads the hardcoded data (helpers like `lib/products.ts`, components like `Stars.tsx`), the fake product API route, the fake checkout page and any card form. The old data files themselves (`src/data/*`) stay and are listed as unused until the owner agrees. Details: `docs/frontend-wiring.md`, "Dead code".
 - No store with products yet? Wire and click through against mock.shop first (`docs/frontend-wiring.md`, "No development store yet"): real Shopify responses, a real cart and checkout link. Sign-off still needs the development store. The kit has no mock products of its own: without Shopify settings every read throws.
 - Say "unverified" for anything not clicked through against a real (development) store.
