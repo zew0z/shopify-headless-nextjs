@@ -33,8 +33,7 @@ export function compareToCatalogue({ handles, summary }, catalog) {
   return problems;
 }
 
-async function storefront(query, variables) {
-  const env = shopifyEnv();
+async function storefront(query, variables, env) {
   const response = await fetch(`https://${env.domain}/api/${env.apiVersion}/graphql.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Shopify-Storefront-Access-Token": env.storefrontToken },
@@ -49,15 +48,14 @@ async function storefront(query, variables) {
 const PRODUCTS = `query($after: String) { products(first: 250, after: $after) { pageInfo { hasNextPage endCursor } nodes { handle images(first: 1) { nodes { url } } variants(first: ${VARIANT_PAGE}) { nodes { id } } } } }`;
 const COLLECTIONS = `query($after: String) { collections(first: 250, after: $after) { pageInfo { hasNextPage endCursor } nodes { handle } } }`;
 
-export async function fetchStorefront() {
-  const env = shopifyEnv();
+export async function fetchStorefront({ env = shopifyEnv() } = {}) {
   if (!env.domain || !env.storefrontToken) throw new Error("needs SHOPIFY_STORE_DOMAIN and a public Storefront token in .env.local");
   let served = null;
   const all = async (query, key) => {
     const nodes = [];
     let after = null;
     for (;;) {
-      const { data, served: v } = await storefront(query, { after });
+      const { data, served: v } = await storefront(query, { after }, env);
       served = v ?? served;
       nodes.push(...data[key].nodes);
       if (!data[key].pageInfo.hasNextPage) return nodes;

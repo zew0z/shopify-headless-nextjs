@@ -241,35 +241,30 @@ export async function predictiveSearch(
 
   requireShopify();
 
-  try {
-    const res = await shopifyFetch<{
-      predictiveSearch: {
-        queries: Array<{ text: string; styledText?: string }>;
-        products: Product[];
-        collections: Collection[];
-      };
-    }>({
-      query: predictiveSearchQuery,
-      variables: {
-        query,
-        limit: options?.limit || 5,
-        country: options?.country,
-        language: options?.language,
-      },
-      cache: "no-store",
-    });
+  const res = await shopifyFetch<{
+    predictiveSearch: {
+      queries: Array<{ text: string; styledText?: string }>;
+      products: Product[];
+      collections: Collection[];
+    };
+  }>({
+    query: predictiveSearchQuery,
+    variables: {
+      query,
+      limit: options?.limit || 5,
+      country: options?.country,
+      language: options?.language,
+    },
+    cache: "no-store",
+  });
 
-    return (
-      res.body.data?.predictiveSearch || {
-        queries: [],
-        products: [],
-        collections: [],
-      }
-    );
-  } catch (err) {
-    console.warn(`[Shopify SDK] predictiveSearch("${query}") error:`, err);
-    return emptyResult;
-  }
+  return (
+    res.body.data?.predictiveSearch || {
+      queries: [],
+      products: [],
+      collections: [],
+    }
+  );
 }
 
 // -------------------------------------------------------------

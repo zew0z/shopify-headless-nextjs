@@ -41,10 +41,10 @@ test("follows pagination, uses only the public token, and reports the served ver
 });
 
 test("a missing token is a readable error before any request", async () => {
-  delete process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN;
   const shop = fakeStorefront();
   mock.method(globalThis, "fetch", shop.handler);
-  await assert.rejects(fetchStorefront(), /public Storefront token/);
+  // Pass the settings in, so a real .env.local in the repo cannot fill the token.
+  await assert.rejects(fetchStorefront({ env: { domain: "x.myshopify.com", apiVersion: "2026-07", storefrontToken: "" } }), /public Storefront token/);
   assert.equal(shop.seen.length, 0);
 });
 

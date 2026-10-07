@@ -53,7 +53,7 @@ export const shopifyConfig = {
 
 /**
  * Returns true if valid Shopify credentials are configured.
- * If false, the integration falls back gracefully to mock catalog data.
+ * If false, every catalogue read throws and says which settings to add (mock.shop works for development).
  */
 export const isShopifyConfigured = Boolean(
   shopifyConfig.domain &&

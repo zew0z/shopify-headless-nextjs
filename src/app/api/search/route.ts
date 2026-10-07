@@ -15,9 +15,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(results);
   } catch (error) {
     console.error("[Search Route Error]:", error);
-    return NextResponse.json(
-      { queries: [], products: [], collections: [] },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : "Search failed";
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }

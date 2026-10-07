@@ -37,6 +37,18 @@ for (const [name, read] of Object.entries(catalogueReads)) {
   });
 }
 
+test("predictiveSearch: a failed Shopify request throws instead of showing no results", async () => {
+  stubFetch(shopifyDown);
+  await assert.rejects(sdk.predictiveSearch("shirt"), sdk.ShopifyError);
+});
+
+test("predictiveSearch: an empty query makes no request", async () => {
+  stubFetch(() => json({}));
+  const result = await sdk.predictiveSearch("  ");
+  assert.equal(calls.length, 0);
+  assert.deepEqual(result.products, []);
+});
+
 const emptyCatalogue = {
   products: { edges: [] },
   product: null,
