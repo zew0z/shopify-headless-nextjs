@@ -56,6 +56,7 @@ export * from "./client";
 export * from "./queries";
 export * from "./mutations";
 export * from "./money";
+export * from "./variants";
 
 /**
  * Catalogue reads are shared by every visitor, so they live in the Next.js data
