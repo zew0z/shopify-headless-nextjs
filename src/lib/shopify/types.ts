@@ -432,7 +432,8 @@ export interface MenuItem {
   url: string | null;
   type: string;
   resourceId: string | null;
-  items: MenuItem[];
+  /** The menu query asks for three levels; items at the third level have none. */
+  items?: MenuItem[];
 }
 
 export interface Menu {

@@ -29,3 +29,31 @@ test("internal links the frontend has no route for are dropped and listed", () =
 test("no menu gives no links", () => {
   assert.deepEqual(menuLinks(null, { hosts }), { links: [], dropped: [] });
 });
+
+// The real menu query asks for three levels and the third level has no `items` key.
+const leaf = (title, url) => ({ id: title, title, url, type: "HTTP", resourceId: null });
+const threeLevel = { id: "m", title: "Main", items: [
+  { ...leaf("Shop", "https://shop.example.com/collections/all"), items: [
+    { ...leaf("Men", "https://shop.example.com/collections/men"), items: [leaf("Shirts", "https://shop.example.com/collections/shirts")] },
+  ] },
+] };
+
+test("a three-level menu from the real query does not crash and keeps the deepest level", () => {
+  const { links } = menuLinks(threeLevel, { hosts });
+  assert.equal(links[0].items[0].items[0].href, "/collections/shirts");
+  assert.deepEqual(links[0].items[0].items[0].items, []);
+});
+
+test("routable children of a dropped parent move up to the parent's place", () => {
+  const nested = { id: "m", title: "Main", items: [
+    item("First", "https://shop.example.com/collections/first"),
+    item("Blog", "https://shop.example.com/blogs/news", [
+      item("Help", "https://shop.example.com/pages/help"),
+      item("Archive", "https://shop.example.com/blogs/archive"),
+    ]),
+    item("Last", "https://shop.example.com/collections/last"),
+  ] };
+  const { links, dropped } = menuLinks(nested, { hosts, routes: [/^\/collections\//, /^\/pages\//] });
+  assert.deepEqual(links.map((l) => l.title), ["First", "Help", "Last"]);
+  assert.deepEqual(dropped.map((l) => l.title).sort(), ["Archive", "Blog"]);
+});
