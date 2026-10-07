@@ -77,7 +77,7 @@ test("package.json gets the missing scripts and dev tools; a different script wi
 
 test(".gitignore only gains the lines it lacks", () => {
   const plan = planKitInstall({ kitRoot, target: received(), appRoot: "" });
-  assert.deepEqual(plan.gitignore, ["/data/catalog.json", "/test-results/", "/playwright-report/"]);
+  assert.deepEqual(plan.gitignore, ["/data/catalog.json", "/test-results/", "/playwright-report/", "frontend-audit.json"]);
 });
 
 test("the agent instructions are added only when neither AGENTS.md nor CLAUDE.md has them", () => {
@@ -87,4 +87,22 @@ test("the agent instructions are added only when neither AGENTS.md nor CLAUDE.md
 
 test("a clean repo has no conflicts", () => {
   assert.equal(hasConflicts(planKitInstall({ kitRoot, target: received(), appRoot: "" })), false);
+});
+
+test("the plan adds error pages and a CLAUDE.md pointer only where missing", () => {
+  const target = received({ "app/error.tsx": "mine" });
+  const plan = planKitInstall({ kitRoot, target, appRoot: "" });
+  const extras = plan.extras.map((e) => e.to).sort();
+  assert.deepEqual(extras, ["CLAUDE.md", "app/global-error.tsx"]);
+  assert.match(plan.extras.find((e) => e.to === "CLAUDE.md").text, /@AGENTS\.md/);
+  assert.match(plan.extras.find((e) => e.to === "app/global-error.tsx").text, /<html/);
+  assert.ok(plan.gitignore.includes("frontend-audit.json"));
+  assert.deepEqual(plan.conflicts, [], "their own error page is not a conflict");
+  assert.equal(plan.keptErrorPage, true);
+});
+
+test("the error pages go under the app root, and an existing CLAUDE.md is left alone", () => {
+  const plan = planKitInstall({ kitRoot, target: received({ "src/app/page.tsx": "", "CLAUDE.md": "# Mine\n" }), appRoot: "src/" });
+  assert.deepEqual(plan.extras.map((e) => e.to).sort(), ["src/app/error.tsx", "src/app/global-error.tsx"]);
+  assert.equal(plan.keptErrorPage, false);
 });

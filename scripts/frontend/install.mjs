@@ -50,6 +50,14 @@ export function applyKitInstall(plan, target, notes) {
     changed++;
   }
 
+  // After the agents note, which writes into CLAUDE.md only when AGENTS.md does not exist yet.
+  for (const { to, text } of plan.extras) {
+    const dest = path.join(target, to);
+    mkdirSync(path.dirname(dest), { recursive: true });
+    writeFileSync(dest, text);
+    changed++;
+  }
+
   const stateFile = path.join(target, "store-setup.state.json");
   if (!existsSync(stateFile)) {
     saveState(stateFile, markDone(markDone(emptyState(), "frontend-audit", notes.audit), "kit-install", notes.install));

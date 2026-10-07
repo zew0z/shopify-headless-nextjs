@@ -83,3 +83,30 @@ test("a plan with conflicts writes nothing at all", () => {
   assert.equal(existsSync(path.join(target, "lib/shopify/index.ts")), false);
   assert.equal(read(target, "package.json"), PKG);
 });
+
+test("installing writes the error pages and a CLAUDE.md pointing at AGENTS.md, and a second install adds nothing", () => {
+  const target = received();
+  applyKitInstall(planKitInstall({ kitRoot, target, appRoot: "" }), target, notes);
+  assert.match(read(target, "app/global-error.tsx"), /<html/);
+  assert.match(read(target, "app/error.tsx"), /Something went wrong/);
+  assert.equal(read(target, "CLAUDE.md"), "@AGENTS.md\n");
+  assert.match(read(target, "AGENTS.md"), /# Store setup/);
+  assert.match(read(target, ".gitignore"), /^frontend-audit\.json$/m);
+  const second = planKitInstall({ kitRoot, target, appRoot: "" });
+  assert.deepEqual(second.extras, []);
+  assert.equal(applyKitInstall(second, target, notes).changed, 0);
+});
+
+test("an existing CLAUDE.md keeps its words and gets the store setup block when there is no AGENTS.md", () => {
+  const target = received({ "CLAUDE.md": "# Mine\n" });
+  applyKitInstall(planKitInstall({ kitRoot, target, appRoot: "" }), target, notes);
+  assert.match(read(target, "CLAUDE.md"), /^# Mine\n\n# Store setup/);
+  assert.equal(existsSync(path.join(target, "AGENTS.md")), false);
+});
+
+test("an existing error page is never overwritten", () => {
+  const target = received({ "app/error.tsx": "mine", "app/global-error.tsx": "mine too" });
+  applyKitInstall(planKitInstall({ kitRoot, target, appRoot: "" }), target, notes);
+  assert.equal(read(target, "app/error.tsx"), "mine");
+  assert.equal(read(target, "app/global-error.tsx"), "mine too");
+});

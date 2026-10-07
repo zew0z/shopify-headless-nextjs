@@ -245,6 +245,8 @@ switch (command) {
     if (Object.keys(devDependencies).length) info(`dev tools to add: ${Object.keys(devDependencies).join(", ")}`);
     if (plan.gitignore.length) info(`.gitignore lines to add: ${plan.gitignore.join(" ")}`);
     if (plan.agentsNote) info("agent instructions to add: the # Store setup block");
+    for (const e of plan.extras) info(`left for the next agent: ${e.to}`);
+    if (plan.keptErrorPage) info("kept their error page");
     if (hasConflicts(plan)) {
       for (const c of plan.conflicts) bad(`${c.to}: ${c.why}`);
       for (const c of plan.packageJson.conflicts) bad(`package.json ${c.key} is "${c.have}", the kit needs "${c.want}"`);
@@ -260,6 +262,7 @@ switch (command) {
     const { changed } = applyKitInstall(plan, target, { audit: audit.stack.reason, install: `kit ${kitVersion}` });
     ok(changed ? `kit ${kitVersion} installed (${changed} changes)` : "kit already installed, nothing changed");
     info(`Next, in ${target}: pnpm install, then pnpm shop-setup next.`);
+    info("store-setup.state.json is the setup's progress record: commit it. frontend-audit.json is a scratch file and is ignored by git.");
     break;
   }
   case "frontend-check": {

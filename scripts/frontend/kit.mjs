@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { findSdkDir } from "../shopify/sdk-dir.mjs";
+import { ERROR_PAGE, GLOBAL_ERROR_PAGE } from "./templates.mjs";
 
 const ROUTES = ["cart", "revalidate", "health", "search"];
 const COPIED_AS_IS = [
@@ -14,7 +15,7 @@ const COPIED_AS_IS = [
 ];
 const SCRIPTS = ["shop-setup", "test:scripts", "test:e2e"];
 const DEV_TOOLS = ["@playwright/test", "typescript"];
-const GITIGNORE = [".env*", "/data/catalog.json", "/test-results/", "/playwright-report/"];
+const GITIGNORE = [".env*", "/data/catalog.json", "/test-results/", "/playwright-report/", "frontend-audit.json"];
 
 export const STORE_SETUP_BLOCK = `# Store setup
 
@@ -87,7 +88,15 @@ export function planKitInstall({ kitRoot, target, appRoot }) {
 
   const agentsNote = !["AGENTS.md", "CLAUDE.md"].some((f) => existsSync(path.join(target, f)) && read(path.join(target, f)).includes("# Store setup"));
 
-  return { write, same, conflicts, packageJson: { add, conflicts: pkgConflicts }, gitignore, agentsNote };
+  // Left for the next agent: plain error pages where the frontend has none, and a CLAUDE.md that points at AGENTS.md.
+  // Their own error page stays as it is and is never a conflict.
+  const hasPage = (name) => ["tsx", "ts", "jsx", "js"].some((ext) => existsSync(path.join(target, `${appRoot}app/${name}.${ext}`)));
+  const extras = [];
+  if (!hasPage("error")) extras.push({ to: `${appRoot}app/error.tsx`, text: ERROR_PAGE });
+  if (!hasPage("global-error")) extras.push({ to: `${appRoot}app/global-error.tsx`, text: GLOBAL_ERROR_PAGE });
+  if (!existsSync(path.join(target, "CLAUDE.md"))) extras.push({ to: "CLAUDE.md", text: "@AGENTS.md\n" });
+
+  return { write, same, conflicts, packageJson: { add, conflicts: pkgConflicts }, gitignore, agentsNote, extras, keptErrorPage: hasPage("error") };
 }
 
 export const hasConflicts = (plan) => plan.conflicts.length > 0 || plan.packageJson.conflicts.length > 0;
