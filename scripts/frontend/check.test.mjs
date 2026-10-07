@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkWiring } from "./check.mjs";
+import { checkWiring, smokeSite } from "./check.mjs";
 import { makeFixture } from "../test-support/fixture.mjs";
 
 const KIT = {
@@ -20,6 +20,12 @@ export default async function Home() { const live = await getProducts(); return 
   "src/components/Grid.tsx": `const res = await fetch("/api/products");`,
   "src/components/Cart.tsx": `export const Cart = () => <a href="/checkout">Checkout</a>;`,
   "src/components/Price.tsx": `export const Price = ({ p }) => <span>€{p}</span>;`,
+  "src/data/navigation.ts": `export const navigation = [{ label: "Shop", href: "/shop" }, { label: "About", href: "/about" }];`,
+  "src/app/layout.tsx": `import { navigation } from "@/data/navigation";
+export default function Layout({ children }) { return <nav>{navigation.length}{children}</nav>; }`,
+  "src/components/Card.tsx": `export const Card = ({ p }) => <span>{p.rating}</span>;
+const sample = { title: "A", rating: 4.5 };`,
+  "src/components/Pay.tsx": `export const Pay = () => <input name="cardNumber" autoComplete="cc-number" />;`,
 };
 
 const WIRED = {
@@ -47,10 +53,41 @@ test("a frontend still on its own data fails every wiring check, with places", (
   assert.deepEqual(r["Prices use the currency Shopify returns, not a hardcoded symbol"].where, ["src/components/Price.tsx:1 €{"]);
 });
 
+test("a frontend with hardcoded menus, invented ratings and a card form fails the three new checks, with places", () => {
+  const r = byWhat(checkWiring(makeFixture(UNWIRED)));
+  assert.deepEqual(r["No page or component imports hardcoded menus, policies, pages or store claims"].where, ["src/data/navigation.ts:1 menu"]);
+  assert.deepEqual(r["No invented ratings, reviews, stock or badges"].where, ["src/components/Card.tsx:2 rating"]);
+  assert.deepEqual(r["No payment form: Shopify's checkout takes the payment"].where, ['src/components/Pay.tsx:1 name="cardNumber"']);
+});
+
+test("an unused menu file and an unused type declaration do not fail, but an unused file under components does", () => {
+  const r = byWhat(
+    checkWiring(
+      makeFixture({
+        ...WIRED,
+        "src/data/navigation.ts": `export const navigation = [{ label: "Shop", href: "/shop" }];`,
+        "src/types/product.ts": `export type Product = { title: string; rating?: number };`,
+      })
+    )
+  );
+  assert.deepEqual(r["No page or component imports hardcoded menus, policies, pages or store claims"].where, []);
+  assert.deepEqual(r["No invented ratings, reviews, stock or badges"].where, []);
+  const imported = byWhat(
+    checkWiring(
+      makeFixture({
+        ...WIRED,
+        "src/types/product.ts": `export type Product = { title: string; rating?: number };`,
+        "src/app/page.tsx": `import type { Product } from "@/types/product";`,
+      })
+    )
+  );
+  assert.deepEqual(imported["No invented ratings, reviews, stock or badges"].where, ["src/types/product.ts:1 rating"]);
+});
+
 test("a wired frontend passes every check, even with its old data file still on disk and an uncached cart page", () => {
   const results = checkWiring(makeFixture(WIRED));
   assert.deepEqual(results.filter((r) => !r.ok), []);
-  assert.equal(results.length, 7);
+  assert.equal(results.length, 10);
 });
 
 test("a cart wired through the kit's cartAction, as the wiring guide shows, talks to Shopify", () => {
@@ -61,6 +98,19 @@ test("a cart wired through the kit's cartAction, as the wiring guide shows, talk
         "src/context/cart.tsx": `import { cartAction } from "@/lib/shopify/cart-client";
 const add = (lines) => cartAction({ action: "create", lines });
 const go = (cart) => { window.location.href = cart.checkoutUrl; };`,
+      })
+    )
+  );
+  assert.deepEqual(r["The cart talks to Shopify and checkout uses Shopify's checkoutUrl"].where, []);
+});
+
+test("a cart wired through the kit's cart provider passes the checkout check without naming checkoutUrl", () => {
+  const r = byWhat(
+    checkWiring(
+      makeFixture({
+        ...WIRED,
+        "src/context/cart.tsx": `import { useCart } from "../lib/shopify/cart-provider";
+export const Go = () => { const { checkout } = useCart(); return <button onClick={() => checkout()}>Pay</button>; };`,
       })
     )
   );
@@ -80,4 +130,35 @@ test("a frontend without the kit fails the first check", () => {
 test("a layout that switches caching off fails, because every page under it is uncached", () => {
   const r = byWhat(checkWiring(makeFixture({ ...WIRED, "src/app/layout.tsx": `export const fetchCache = "force-no-store";` })));
   assert.deepEqual(r["Pages that show products are cached"].where, ['src/app/layout.tsx:1 fetchCache = "force-no-store"']);
+});
+
+test("smokeSite passes when the home page and a product page show Shopify images", async () => {
+  const pages = {
+    "http://x/": '<a href="/products/slides">x</a><img src="https://cdn.shopify.com/a.jpg">',
+    "http://x/products/slides": '<img src="https://cdn.shopify.com/b.jpg">',
+  };
+  const fetchFn = async (u) => new Response(pages[u] ?? "missing", { status: pages[u] ? 200 : 404 });
+  assert.ok((await smokeSite("http://x", fetchFn)).every((r) => r.ok));
+  assert.ok((await smokeSite("http://x/", fetchFn)).every((r) => r.ok));
+});
+
+test("smokeSite fails when the page has no Shopify image", async () => {
+  const fetchFn = async () => new Response('<a href="/products/a">a</a><img src="https://images.unsplash.com/a.jpg">', { status: 200 });
+  assert.ok((await smokeSite("http://x", fetchFn)).some((r) => !r.ok));
+});
+
+test("smokeSite fails when the home page has no product link", async () => {
+  const fetchFn = async () => new Response('<img src="https://cdn.shopify.com/a.jpg">', { status: 200 });
+  const results = await smokeSite("http://x", fetchFn);
+  assert.ok(results.some((r) => !r.ok && r.what.includes("product")));
+  assert.ok(results.some((r) => r.where.some((w) => w.includes("no product link on the home page"))));
+});
+
+test("smokeSite reports a network error as a failing result", async () => {
+  const fetchFn = async () => {
+    throw new Error("connect ECONNREFUSED");
+  };
+  const results = await smokeSite("http://x", fetchFn);
+  assert.equal(results.length > 0 && results.every((r) => !r.ok), true);
+  assert.ok(results[0].where.join(" ").includes("ECONNREFUSED"));
 });

@@ -10,7 +10,7 @@ import { nextActions } from "./engine.mjs";
 import { auditFrontend, summariseAudit } from "../frontend/audit.mjs";
 import { hasConflicts, planKitInstall } from "../frontend/kit.mjs";
 import { applyKitInstall } from "../frontend/install.mjs";
-import { checkWiring } from "../frontend/check.mjs";
+import { checkWiring, smokeSite } from "../frontend/check.mjs";
 import { STEPS } from "./steps.mjs";
 import { loadState, markDone, saveState } from "./state.mjs";
 import { loadConfig } from "./config.mjs";
@@ -263,7 +263,16 @@ switch (command) {
     break;
   }
   case "frontend-check": {
-    const results = checkWiring(path.resolve(args[0] ?? "."));
+    // `--site http://...` (a space, not =) leaves the url as a positional argument: take it as the site, not the folder.
+    const spaced = process.argv.indexOf("--site");
+    const site = typeof flags.site === "string" ? flags.site : flags.site && spaced >= 0 ? process.argv[spaced + 1] : undefined;
+    if (flags.site && !site) {
+      bad("--site needs the address of the running site, for example --site http://localhost:3000");
+      process.exit(1);
+    }
+    const folder = args.find((a) => a !== site);
+    const results = checkWiring(path.resolve(folder ?? "."));
+    if (site) results.push(...(await smokeSite(site)));
     for (const r of results) {
       (r.ok ? ok : bad)(r.what);
       for (const w of r.where) info(w);
@@ -274,6 +283,6 @@ switch (command) {
     process.exit(failed ? 1 : 0);
   }
   default:
-    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir]");
+    console.log("usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>]");
     process.exit(command ? 1 : 0);
 }
