@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { checkWiring, smokeSite } from "./check.mjs";
+import { readFileSync } from "node:fs";
 import { makeFixture } from "../test-support/fixture.mjs";
 
 const KIT = {
@@ -38,6 +39,14 @@ export default async function Home() { const products = (await getProducts()).ma
   "src/context/cart.tsx": `const res = await fetch("/api/cart", { method: "POST", body: JSON.stringify({ action: "add" }) });
 const go = (cart) => { window.location.href = cart.checkoutUrl; };`,
 };
+
+// The kit's own SDK files, as kit-install copies them into a received frontend.
+const KIT_SDK = Object.fromEntries(
+  ["cart-client.ts", "cart-provider.tsx", "cart-store.ts", "types.ts", "index.ts"].map((f) => [
+    `src/lib/shopify/${f}`,
+    readFileSync(new URL(`../../src/lib/shopify/${f}`, import.meta.url), "utf8"),
+  ])
+);
 
 const byWhat = (results) => Object.fromEntries(results.map((r) => [r.what, r]));
 
@@ -88,6 +97,33 @@ test("a wired frontend passes every check, even with its old data file still on 
   const results = checkWiring(makeFixture(WIRED));
   assert.deepEqual(results.filter((r) => !r.ok), []);
   assert.equal(results.length, 10);
+});
+
+test("with the kit's own files installed, a cart that never calls Shopify still fails the cart check", () => {
+  const files = { ...WIRED, ...KIT_SDK, "src/context/cart.tsx": `export const useCart = () => ({ add: () => {} });` };
+  delete files["src/app/cart/page.tsx"];
+  const r = byWhat(checkWiring(makeFixture(files)));
+  assert.deepEqual(r["The cart talks to Shopify and checkout uses Shopify's checkoutUrl"].where, ["nothing calls /api/cart", "nothing uses cart.checkoutUrl"]);
+});
+
+test("with the kit's own files installed, a component using the kit's cart provider passes the cart check", () => {
+  const r = byWhat(
+    checkWiring(
+      makeFixture({
+        ...WIRED,
+        ...KIT_SDK,
+        "src/context/cart.tsx": `export const none = 1;`,
+        "src/components/Bag.tsx": `import { useCart } from "@/lib/shopify/cart-provider";
+export const Bag = () => { const { checkout } = useCart(); return <button onClick={() => checkout()}>Pay</button>; };`,
+      })
+    )
+  );
+  assert.deepEqual(r["The cart talks to Shopify and checkout uses Shopify's checkoutUrl"].where, []);
+});
+
+test("the kit's own files do not trip the other checks", () => {
+  const results = checkWiring(makeFixture({ ...WIRED, ...KIT_SDK }));
+  assert.deepEqual(results.filter((r) => !r.ok), []);
 });
 
 test("a cart wired through the kit's cartAction, as the wiring guide shows, talks to Shopify", () => {
