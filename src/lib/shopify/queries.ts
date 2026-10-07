@@ -521,3 +521,91 @@ export const getCartQuery = /* GraphQL */ `
   }
   ${cartFragment}
 `;
+
+// -------------------------------------------------------------
+// Shop, menus, policies and pages
+// -------------------------------------------------------------
+
+export const shopDetailsQuery = /* GraphQL */ `
+  query GetShopDetails {
+    shop {
+      name
+      description
+      primaryDomain {
+        url
+        host
+      }
+      brand {
+        slogan
+        shortDescription
+        logo {
+          image {
+            ...ImageFragment
+          }
+        }
+      }
+    }
+  }
+  ${imageFragment}
+`;
+
+const menuItemFields = /* GraphQL */ `
+  id
+  title
+  url
+  type
+  resourceId
+`;
+
+export const menuQuery = /* GraphQL */ `
+  query GetMenu($handle: String!) {
+    menu(handle: $handle) {
+      id
+      title
+      items {
+        ${menuItemFields}
+        items {
+          ${menuItemFields}
+          items {
+            ${menuItemFields}
+          }
+        }
+      }
+    }
+  }
+`;
+
+const policyFields = /* GraphQL */ `
+  id
+  title
+  handle
+  body
+  url
+`;
+
+export const policiesQuery = /* GraphQL */ `
+  query GetPolicies {
+    shop {
+      privacyPolicy { ${policyFields} }
+      refundPolicy { ${policyFields} }
+      shippingPolicy { ${policyFields} }
+      termsOfService { ${policyFields} }
+    }
+  }
+`;
+
+export const pageQuery = /* GraphQL */ `
+  query GetPage($handle: String!) {
+    page(handle: $handle) {
+      id
+      handle
+      title
+      body
+      bodySummary
+      seo {
+        title
+        description
+      }
+    }
+  }
+`;

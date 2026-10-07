@@ -25,6 +25,25 @@ export class ShopifyError extends Error {
   }
 }
 
+/**
+ * Every product comes from Shopify; nothing is made up. Without Shopify settings
+ * the reads throw and say what to set, in development and production.
+ * To work without the owner's store, point the settings at mock.shop.
+ */
+export function requireShopify(): void {
+  if (isShopifyConfigured) return;
+  throw new ShopifyError(
+    "Shopify is not configured: set NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN and NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN (mock.shop works for development).",
+    500
+  );
+}
+
+/** Shopify answered without an error but without the data we asked for. */
+export function dataOrThrow<T>(data: T | undefined): T {
+  if (!data) throw new ShopifyError("Shopify returned no data", 502);
+  return data;
+}
+
 interface ShopifyFetchOptions {
   query: string;
   variables?: Record<string, unknown>;

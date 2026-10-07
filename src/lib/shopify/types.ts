@@ -414,3 +414,54 @@ export interface ConnectionHealthCheck {
   latencyMs?: number;
   errors?: string[];
 }
+
+// -------------------------------------------------------------
+// Shop, menus, policies and pages
+// -------------------------------------------------------------
+
+export interface ShopDetails {
+  name: string;
+  description: string | null;
+  primaryDomain: { url: string; host: string };
+  brand: { slogan: string | null; shortDescription: string | null; logo: { image: ShopifyImage | null } | null } | null;
+}
+
+export interface MenuItem {
+  id: string;
+  title: string;
+  url: string | null;
+  type: string;
+  resourceId: string | null;
+  items: MenuItem[];
+}
+
+export interface Menu {
+  id: string;
+  title: string;
+  items: MenuItem[];
+}
+
+export interface ShopPolicy {
+  id: string;
+  title: string;
+  handle: string;
+  body: string;
+  url: string;
+}
+
+export interface ContentPage {
+  id: string;
+  handle: string;
+  title: string;
+  body: string;
+  bodySummary: string;
+  seo: { title: string | null; description: string | null } | null;
+}
+
+/** A menu link as this site renders it: a path on the site, or an outside address. */
+export interface MenuLink {
+  title: string;
+  href: string;
+  external: boolean;
+  items: MenuLink[];
+}

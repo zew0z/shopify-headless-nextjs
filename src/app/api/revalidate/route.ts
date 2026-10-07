@@ -9,6 +9,8 @@ import { verifyShopifyWebhook } from "@/lib/shopify/webhook";
  * Listens for Shopify Admin Webhooks (products/create, products/update,
  * products/delete, collections/update, collections/delete) and clears Next.js
  * tag-based data caches instantly.
+ *
+ * Menus, pages and policies (tag `content`) have no webhooks; they refresh hourly.
  */
 export async function POST(req: NextRequest) {
   try {

@@ -4,7 +4,7 @@
  * Plug-and-play functions for products, collections, predictive search, cart, and checkout.
  */
 
-import { shopifyFetch, ShopifyError } from "./client";
+import { shopifyFetch, ShopifyError, requireShopify, dataOrThrow } from "./client";
 import { shopifyConfig, isShopifyConfigured, validateShopifyConfig } from "./config";
 import {
   Product,
@@ -57,25 +57,14 @@ export * from "./queries";
 export * from "./mutations";
 export * from "./money";
 export * from "./variants";
+export * from "./content";
+export * from "./menu";
 
 /**
  * Catalogue reads are shared by every visitor, so they live in the Next.js data
  * cache and are purged by tag from /api/revalidate when Shopify sends a webhook.
  */
 const CATALOGUE_CACHE: RequestCache = "force-cache";
-
-/**
- * Every product comes from Shopify; nothing is made up. Without Shopify settings
- * the catalogue reads throw and say what to set, in development and production.
- * To work without the owner's store, point the settings at mock.shop.
- */
-function requireShopify(): void {
-  if (isShopifyConfigured) return;
-  throw new ShopifyError(
-    "Shopify is not configured: set NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN and NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN (mock.shop works for development).",
-    500
-  );
-}
 
 // -------------------------------------------------------------
 // Connection & Health Operations
@@ -159,12 +148,6 @@ export async function checkShopifyConnection(): Promise<ConnectionHealthCheck> {
 // -------------------------------------------------------------
 
 type Edges<T> = { pageInfo: PageInfo; edges: Array<{ node: T }>; filters?: Filter[] };
-
-/** Shopify answered without an error but without the data we asked for. */
-function dataOrThrow<T>(data: T | undefined): T {
-  if (!data) throw new ShopifyError("Shopify returned no data", 502);
-  return data;
-}
 
 /**
  * Fetches a list of products with optional query filtering, sorting, and pagination.
