@@ -65,12 +65,43 @@ If the frontend called its own fake API (`fetch("/api/products")`), replace the 
 | one product page | `getProduct(handle)` |
 | "you may also like" | `getProductRecommendations(product.id)` |
 | category / collection list | `getCollections()` |
-| category page | `getCollection(handle)` + `getCollectionProducts({ handle, limit, sortKey })` |
-| search box | `GET /api/search?q=...` (already installed) or `predictiveSearch(q)` on the server |
+| category page | `getCollection(handle)` + `getCollectionProductsPage({ handle, limit, sortKey })` |
+| a list with "Load more" or filters | `getProductsPage`, `getCollectionProductsPage`, `searchProducts` (next section) |
+| search results page | `searchProducts({ query })` |
+| search box (type-ahead) | `GET /api/search?q=...` (already installed) or `predictiveSearch(q)` on the server |
+| header and footer links, policies, info pages | see "Header, footer, policies and pages" |
 
-A product that is not found returns `null`: call `notFound()` from `next/navigation`. A Shopify failure throws; let it reach the frontend's `error.tsx` (add a plain one if they have none) rather than catching it and showing something else.
+A product or collection that is not found returns `null`: call `notFound()` from `next/navigation`. A Shopify failure throws; let it reach the frontend's `error.tsx` (kit-install adds one when they have none) rather than catching it and showing something else.
 
-### 4. Caching and images
+### 4. Lists, load more and filters
+
+Use the page functions. They return `{ products, pageInfo, filters }`; `searchProducts` also returns `totalCount`.
+
+- `getCollectionProductsPage({ handle, limit, cursor, sortKey, reverse, filters })` returns `null` when the collection does not exist: call `notFound()`.
+- `getProductsPage({ limit, cursor, query, sortKey, reverse })` for an all-products list. It has no `filters`.
+- `searchProducts({ query, limit, cursor, sortKey, reverse, filters })` for a results page.
+- **Next page:** pass `pageInfo.endCursor` as the next `cursor`, while `pageInfo.hasNextPage` is true.
+- **Filters:** build their filter UI from `page.filters` (each has `label`, `type` and `values`; each value has `label`, `count` and `input`). `value.input` is a JSON string: `JSON.parse(value.input)` is one `ProductFilterInput`. Pass the picked ones back as `filters: [...]`. Shopify sends no filters for a collection until the owner sets up filters in the Shopify admin (Search & Discovery): when `page.filters` is empty, show no filter UI.
+- **Never filter a whole catalogue in memory** (fetch everything, then `.filter()` in the browser). Shopify filters and pages; the frontend only asks.
+
+A "Load more" button is a client component, and client components do not call the SDK. It calls a **server action** that does:
+
+```ts
+// <app>app/collections/[handle]/actions.ts
+"use server";
+import { getCollectionProductsPage, type ProductFilterInput } from "@/lib/shopify";
+import { toCardProduct } from "@/lib/shopify-adapter";
+
+export async function loadMore(handle: string, cursor: string, filters: ProductFilterInput[]) {
+  const page = await getCollectionProductsPage({ handle, cursor, filters, limit: 12 });
+  if (!page) throw new Error("This collection no longer exists.");
+  return { products: page.products.map(toCardProduct), pageInfo: page.pageInfo };
+}
+```
+
+The button keeps the products it has, appends the returned ones, and stores `pageInfo.endCursor` for the next click. Hide the button when `hasNextPage` is false. If the action throws, show the message near the button and keep the list as it was.
+
+### 5. Caching and images
 
 - Remove `export const dynamic = "force-dynamic"`, `fetchCache = "force-no-store"`, `revalidate = 0` and `cache: "no-store"` from pages and layouts that show products. Keep them on pages that are about one visitor (cart page, account).
 - In `next.config.*`, add Shopify's image host:
@@ -78,6 +109,49 @@ A product that is not found returns `null`: call `notFound()` from `next/navigat
 ```ts
 images: { remotePatterns: [{ protocol: "https", hostname: "cdn.shopify.com", pathname: "/**" }] },
 ```
+
+## Product page
+
+- **Picking a variant:** keep their picker and use `findVariant(product, picked)`, `defaultVariant(product)` and `isOptionValueAvailable(product, picked, name, value)` from `@/lib/shopify/variants`. They are safe in client components. `picked` is `{ Size: "M", Color: "Red" }`. `findVariant` returns `null` when the picks match no variant: disable the add button then. Use `isOptionValueAvailable` to grey out values that would land on a sold-out variant.
+- **Swatches:** `product.options[].optionValues[].swatch` has `color` or `image.previewImage` when the owner gave that value a swatch. Draw the dot from those. When `swatch` is `null`, hide the dot and show the plain value.
+- **Extra fields** (materials, care, size guide): ask for them by name with `getProduct(handle, { metafields: [...] })`. Keep the list in one constant and ask the owner which Shopify fields hold each one:
+
+  ```ts
+  const FIELDS = [{ namespace: "custom", key: "materials" }]; // ask the owner for the real ones
+  const product = await getProduct(handle, { metafields: FIELDS });
+  const materials = product?.metafields?.[0]?.value; // same order as FIELDS; null when the product has none
+  ```
+
+  A `null` entry means this product has no value: hide that bit of UI.
+- **Subscriptions:** show them only from `product.sellingPlanGroups.nodes[].sellingPlans.nodes` (name, description, `priceAdjustments`). Never work out a subscription discount in the browser. The cart line gets the plan: `{ merchandiseId, quantity, sellingPlanId }`. When `product.requiresSellingPlan` is true, the shopper must pick a plan before adding; do not offer a one-time purchase.
+- **Stock:** "Only N left" comes only from `getProductStock(handle)` (a server component call; it answers `{ [variantId]: quantity | null }`). Shopify answers only when the Storefront token has the `unauthenticated_read_product_inventory` scope. Without it the call throws a message naming the scope. Catch that one call, hide the stock line, and tell the owner. The rest of the page does not depend on it. Never show a stock number the owner did not ask for or Shopify did not send.
+
+## Header, footer, policies and pages
+
+Menus, policy text and info pages are written in the Shopify admin. Read them; do not type them into the frontend. They live in `@/lib/shopify` too, and a root layout can read them:
+
+```tsx
+// <app>app/layout.tsx
+import { getShop, getMenu, menuLinks } from "@/lib/shopify";
+
+const ROUTES = [/^\/collections\//, /^\/products\//, /^\/pages\//, /^\/policies\//]; // the routes this site has
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const shop = await getShop();
+  const hosts = [shop.primaryDomain.host];
+  const header = menuLinks(await getMenu("main-menu"), { hosts, routes: ROUTES });
+  const footer = menuLinks(await getMenu("footer"), { hosts, routes: ROUTES });
+  // <html>... render shop.name, header.links, footer.links in their header and footer
+}
+```
+
+- `getShop()` gives `name`, `description`, `primaryDomain` and `brand` (slogan, logo). Use them for the logo text and the footer line.
+- `getMenu(handle)` returns `null` when the menu does not exist. Shopify's own menus are `"main-menu"` and `"footer"`.
+- `menuLinks(menu, { hosts, routes })` turns Shopify's full URLs into paths on this site and marks outside links `external`. A link to a path with no matching route is removed from `links` and returned in `dropped`: list every dropped link for the owner (they either need a page here or a different link in Shopify).
+- `getPolicies()` lists the policies the shop has written (each has `title`, `handle`, `body`) and `getPolicy(handle)` reads one; they feed `/policies/[handle]`. Link the footer from `getPolicies()`, not from a typed list. The `body` is HTML from Shopify. `getPolicy` returns `null` for a policy the shop has not written: call `notFound()`.
+- `getPage(handle)` feeds `/pages/[handle]` (About, FAQ). Same: `null` means `notFound()`.
+- These reads are cached for one hour (Shopify sends no webhooks for them), so an edit in the admin shows up within the hour.
+- A failing read in the root layout would break every page, so the layout needs `global-error.tsx`. kit-install adds one when the frontend has none.
 
 ## Cart
 
@@ -98,6 +172,34 @@ Everything goes through `POST /api/cart` with a JSON body. On success the respon
 
 ### The pattern
 
+Wrap the root layout once, then call `useCart()` where their cart context used to be. It is not exported from `@/lib/shopify` (that index is server code); import it from its own file.
+
+```tsx
+// <app>app/layout.tsx
+import { CartProvider } from "@/lib/shopify/cart-provider";
+// ... <body><CartProvider>{children}</CartProvider></body>
+```
+
+```tsx
+// in their cart button, drawer or page ("use client")
+import { useCart } from "@/lib/shopify/cart-provider";
+
+const { cart, ready, busy, error, lines, count, add, update, remove, applyDiscountCodes, checkout } = useCart();
+
+add([{ merchandiseId: variantId, quantity: 1 }]);   // add a line (sellingPlanId optional)
+update(line.id, 3);                                  // set a quantity
+remove(line.id);                                     // take a line out
+checkout();                                          // go to Shopify's checkout
+```
+
+- Map the names their cart context already uses onto these (`addItem` → `add`, `items` → `lines`, `itemCount` → `count`). Keep their component code; change the context file or the hook it calls.
+- `lines` come from `cartLines(cart)`: `id`, `quantity`, `variantId`, `productTitle`, `productHandle`, `variantTitle` (`null` for a one-variant product), `options`, `image`, `unitPrice`, `total`.
+- `count` is Shopify's total quantity. `ready` is false until the stored cart has been read back: show no "empty cart" before then.
+- The store does one change at a time, so a double click cannot add twice (`busy` is true meanwhile). When Shopify says the stored cart no longer exists (after checkout or expiry), it forgets it and the next add starts a new one. On any other error it keeps the cart as it was and puts the message in `error`: show it near the button.
+- The cart id is kept in the browser's `localStorage` under `shopify-cart-id`.
+
+**If their cart must stay a different store library** (Redux, Zustand, their own reducer), call `/api/cart` yourself with the kit's client and keep the same rules (one change at a time, handle a cart that is gone, show errors, keep the cart on error):
+
 ```ts
 // The kit ships the /api/cart client: it reads the cart correctly and throws on failure.
 import { cartAction, isShopifyCartId } from "@/lib/shopify/cart-client";
@@ -114,15 +216,32 @@ export async function addToCart(variantId: string, quantity = 1) {
 }
 ```
 
-- **On load:** if a cart id is stored, `get` it. If that returns `null` (Shopify drops carts after checkout or expiry), remove the stored id and start empty.
-- **State:** hold Shopify's cart in their existing context or store. Map it to their line shape for display: `cart.lines.edges[].node` has `id`, `quantity`, `cost.totalAmount` and `merchandise` (the variant: `title`, `price`, `selectedOptions`, and `product.title`, `product.handle`, `product.featuredImage`).
+- **Own store only, on load:** if a cart id is stored, `get` it. If that returns `null` (Shopify drops carts after checkout or expiry), remove the stored id and start empty.
+- **Own store only, state:** hold Shopify's cart in their existing context or store. Map it to their line shape for display: `cart.lines.edges[].node` has `id`, `quantity`, `cost.totalAmount` and `merchandise` (the variant: `title`, `price`, `selectedOptions`, and `product.title`, `product.handle`, `product.featuredImage`).
 - **Totals:** show `cart.cost.subtotalAmount` / `cart.cost.totalAmount`. Never add prices up in the browser; Shopify applies discounts and tax.
-- **Checkout button:** `window.location.href = cart.checkoutUrl`. Remove their fake `/checkout` page or form, after asking the owner if it has anything they want to keep.
+- **Checkout button:** `checkout()` from `useCart()` (or `window.location.href = cart.checkoutUrl`). Remove their fake `/checkout` page or form, after asking the owner if it has anything they want to keep.
 - **Errors:** show the message near the button and keep the cart as it was. Never pretend an item was added when the request failed.
 
 ### Variants
 
 Every add needs a **variant id** (`gid://shopify/ProductVariant/...`). A product with one variant: use `variants.edges[0].node.id`. Several variants (size, colour): use their picker if the design has one, and find the variant whose `selectedOptions` match the picked values. No picker in the design: ask the owner before adding one.
+
+## Things Shopify does not have
+
+"Hide it and list it" is the rule: hide that bit of UI, add it to the list you give the owner, and ask where it should come from.
+
+| Their UI | What to do |
+|---|---|
+| Ratings, review counts, reviews | Hide. Ask: a reviews app, or product metafields? |
+| Announcement bar, free-shipping line, contact email, social links | Hide and list. Open decision: whether these come from a "store settings" metaobject. |
+| Newsletter sign-up | Hide unless a sign-up service is connected. Ask. |
+| Hero copy and slogans | Use `shop.name`, `shop.description` and `shop.brand`, or ask the owner for the words. |
+
+`frontend-audit` finds these in their code (invented fields like `rating`, `reviewCount`, `reviews`, `stockLeft`, `badge`, `subscribable`, typed-in menus, policy text and store claims, card payment forms) and `frontend-check` fails while they still reach customers. A card form never stays: payment is Shopify's checkout.
+
+## Errors
+
+kit-install adds `app/error.tsx` and `app/global-error.tsx` when the frontend has none. Every catalogue and content read throws when Shopify fails, and those pages are what the shopper sees then. Never catch a Shopify error to show something else in its place (an empty list, a default price, an old copy of the text). A missing product, collection, page or policy is a `null`, not an error: `notFound()`.
 
 ## No development store yet? Practise on mock.shop
 
@@ -134,8 +253,16 @@ NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=mock.shop
 NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=mock-shop-needs-no-token
 ```
 
-What it does not prove: its products and currency (CAD) are not the owner's, and its checkout is a demo page that does not show the cart's items. Switch to the development store's settings for the real `frontend-check` sign-off, and never deploy with mock.shop settings.
+What it does not prove:
+
+- Its products are not the owner's, and its prices are in CAD. Show whatever currency Shopify sends.
+- Search matches loosely, so results can include products that do not obviously fit.
+- It has no collection filters, no swatches, no extra fields (metafields come back `null`), no subscriptions and only two info pages (`contact`, `liquid`). Those parts of the wiring cannot be seen working there: say "unverified" for them. It does have menus, the four policies and stock counts.
+- A cart that no longer exists is handled (adding to it answers "The specified cart does not exist." and the cart store starts a new one), but a nonsense variant id can still give a cart, so error paths cannot be practised there.
+- Its checkout is a demo page that does not show the cart's items.
+
+Switch to the development store's settings for the real `frontend-check` sign-off, and never deploy with mock.shop settings.
 
 ## Done means
 
-`pnpm shop-setup frontend-check` passes, `pnpm build` passes, and with the development store's public Storefront token in `.env.local` you clicked through a product list, a product page, add to cart, and the checkout button opened Shopify's checkout. Report anything you did not run as unverified, and the list of fields you hid because Shopify had no value for them.
+`pnpm shop-setup frontend-check` passes, `pnpm build` passes, `pnpm shop-setup frontend-check --site http://localhost:3000` passes against `pnpm start` (it loads the home page and one product page and needs Shopify images on both), and with the development store's public Storefront token in `.env.local` you clicked through a product list, a product page, add to cart, and the checkout button opened Shopify's checkout. Report anything you did not run as unverified, and the list of fields you hid because Shopify had no value for them.

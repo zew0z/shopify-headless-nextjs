@@ -46,7 +46,7 @@ flowchart TD
    - Deprecated `checkoutCreate` completely omitted in accordance with Shopify's platform deprecations.
 
 2. **Advanced Cart & Checkout Operations**:
-   - **Subscriptions & Selling Plans**: Support for `sellingPlanId` on cart lines with automatic `sellingPlanAllocation` breakdown.
+   - **Subscriptions & Selling Plans**: Plans come from `getProduct`'s `sellingPlanGroups` (and `requiresSellingPlan`); `sellingPlanId` on a cart line with automatic `sellingPlanAllocation` breakdown.
    - **Gift Cards**: Dedicated `addGiftCard()` and `removeGiftCard()` using Shopify's `cartGiftCardCodesAdd` / `cartGiftCardCodesRemove` mutations (removal takes the applied card ids from `cart.appliedGiftCards[].id`, not the codes) (tender management separate from discounts).
    - **Promo / Discount Codes**: Full application and error feedback using `cartDiscountCodesUpdate`.
    - **Buyer Identity & SSO**: Links logged-in customer OAuth tokens (`customerAccessToken`) directly into the cart session so stored payment methods and shipping addresses are pre-filled at checkout.
@@ -58,7 +58,16 @@ flowchart TD
 4. **Predictive Search & Type-Ahead**:
    - Query engine supporting Shopify's `predictiveSearch` GraphQL query for instant multi-resource suggestions (products, collections, search queries).
 
-5. **On-Demand Webhook Invalidation (ISR)**:
+5. **Paged Reads & Filters**:
+   - `getProductsPage`, `getCollectionProductsPage` and `searchProducts` return `{ products, pageInfo, filters }`, so lists page with a cursor and filter in Shopify, not in memory. `getProductStock` reads per-variant stock when the token has the inventory scope.
+
+6. **Store Content Reads**:
+   - `getShop`, `getMenu`, `getPolicies`, `getPolicy` and `getPage` read the shop name, menus, legal policies and info pages from Shopify (cached an hour); `menuLinks` turns menu URLs into site paths.
+
+7. **Drop-in Cart**:
+   - `CartProvider` and `useCart()` give a client cart that runs one change at a time, recovers when Shopify drops the cart, and keeps the cart on error. `variants.ts` picks a variant from a shopper's choices.
+
+8. **On-Demand Webhook Invalidation (ISR)**:
    - Built-in `/api/revalidate` route supporting Shopify Admin webhooks (`products/update`, `collections/update`, etc.) with cryptographic **HMAC SHA-256 signature verification** to purge cache tags dynamically.
 
 ---
@@ -74,13 +83,20 @@ src/
 │   ├── revalidate/route.ts     # HMAC-verified webhook cache invalidator
 │   └── search/route.ts         # Predictive search endpoint
 └── lib/shopify/
+    ├── cart-client.ts          # Browser client for /api/cart (throws on failure)
+    ├── cart-provider.tsx       # CartProvider + useCart() for client components
+    ├── cart-store.ts           # The cart's logic without React (one change at a time)
     ├── client.ts               # Resilient fetch client (rate limits, backoff, IP)
     ├── config.ts               # Env validation, domain sanitization & fallbacks
+    ├── content.ts              # Shop, menus, policies and pages (cached an hour)
     ├── index.ts                # Master SDK exports
+    ├── menu.ts                 # menuLinks: Shopify menu URLs as site paths
     ├── money.ts                # formatMoney: a price in the currency Shopify returned
     ├── mutations.ts            # Complete GraphQL cart & gift card mutations
-    ├── queries.ts              # Catalog, collections & predictive search queries
-    └── types.ts                # 100% strict TypeScript types for Storefront models
+    ├── queries.ts              # Catalog, collections, content & predictive search queries
+    ├── types.ts                # 100% strict TypeScript types for Storefront models
+    ├── variants.ts             # findVariant, defaultVariant, isOptionValueAvailable
+    └── webhook.ts              # HMAC check for /api/revalidate
 ```
 
 ---
@@ -109,7 +125,9 @@ SHOPIFY_WEBHOOK_SECRET=
 ```typescript
 import {
   getProducts,
+  getCollectionProductsPage,
   getProduct,
+  getMenu,
   predictiveSearch,
   createCart,
   addToCart,
@@ -123,18 +141,29 @@ const products = await getProducts({ limit: 12, sortKey: "PRICE" });
 // 2. Fetch single product by handle
 const product = await getProduct("hermes-agent-md-files");
 
-// 3. Create a cart session
+// 3. A page of a collection, with Shopify's filters; the next page starts at the end cursor
+const page = await getCollectionProductsPage({ handle: "summer", limit: 12 });
+const next = page?.pageInfo.hasNextPage
+  ? await getCollectionProductsPage({ handle: "summer", limit: 12, cursor: page.pageInfo.endCursor ?? undefined })
+  : null;
+
+// 4. Header links come from the shop's own menu
+const mainMenu = await getMenu("main-menu");
+
+// 5. Create a cart session
 const cart = await createCart([
   { merchandiseId: "gid://shopify/ProductVariant/123456", quantity: 1 }
 ]);
 
-// 4. Apply discount or gift cards
+// 6. Apply discount or gift cards
 const discountedCart = await applyDiscountCode(cart.id, ["PROMO10"]);
 const giftCardCart = await addGiftCard(cart.id, ["GIFT-CARD-XXXX"]);
 
-// 5. Direct customer to hosted checkout
+// 7. Direct customer to hosted checkout
 window.location.href = cart.checkoutUrl;
 ```
+
+In client components use `useCart()` from `@/lib/shopify/cart-provider` instead of calling the cart functions.
 
 ---
 
