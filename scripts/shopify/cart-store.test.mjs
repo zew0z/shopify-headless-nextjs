@@ -71,7 +71,7 @@ test("cartLines flattens Shopify's lines and hides 'Default Title'", () => {
   const line = {
     id: "l1",
     quantity: 2,
-    cost: { totalAmount: { amount: "20.0", currencyCode: "EUR" } },
+    cost: { totalAmount: { amount: "20.0", currencyCode: "EUR" }, amountPerQuantity: { amount: "10.0", currencyCode: "EUR" } },
     merchandise: { id: "v1", title: "Default Title", selectedOptions: [], price: { amount: "10.0", currencyCode: "EUR" }, product: { id: "p1", title: "Throw", handle: "throw", featuredImage: image } },
   };
   const [view] = cartLines(cart("c", [line]));
@@ -82,6 +82,21 @@ test("cartLines flattens Shopify's lines and hides 'Default Title'", () => {
   assert.equal(view.total.amount, "20.0");
   assert.equal(view.image, image);
   assert.deepEqual(cartLines(null), []);
+});
+
+test("cartLines unit price is what the shopper pays per item (a subscription price), falling back to the variant price", () => {
+  const product = { id: "p1", title: "Coffee", handle: "coffee", featuredImage: null };
+  const merchandise = { id: "v1", title: "Bag", selectedOptions: [], price: { amount: "10.0", currencyCode: "EUR" }, product };
+  const withPlan = { id: "l1", quantity: 2, cost: { totalAmount: { amount: "18.0", currencyCode: "EUR" }, amountPerQuantity: { amount: "9.0", currencyCode: "EUR" } }, merchandise };
+  const without = { id: "l2", quantity: 1, cost: { totalAmount: { amount: "10.0", currencyCode: "EUR" } }, merchandise };
+  const [a, b] = cartLines(cart("c", [withPlan, without]));
+  assert.equal(a.unitPrice.amount, "9.0");
+  assert.equal(b.unitPrice.amount, "10.0");
+});
+
+test("the cart fragment asks Shopify for the price per quantity of each line", async () => {
+  const { cartFragment } = await loadSdk("queries");
+  assert.match(cartFragment, /amountPerQuantity\s*{\s*amount\s*currencyCode\s*}/);
 });
 
 const GONE = "Shopify Cart Error: The specified cart does not exist.";

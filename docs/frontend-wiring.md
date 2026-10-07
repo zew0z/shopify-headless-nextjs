@@ -196,7 +196,7 @@ checkout();                                          // go to Shopify's checkout
 ```
 
 - Map the names their cart context already uses onto these (`addItem` → `add`, `items` → `lines`, `itemCount` → `count`). Keep their component code; change the context file or the hook it calls.
-- `lines` come from `cartLines(cart)`: `id`, `quantity`, `variantId`, `productTitle`, `productHandle`, `variantTitle` (`null` for a one-variant product), `options`, `image`, `unitPrice`, `total`.
+- `lines` come from `cartLines(cart)`: `id`, `quantity`, `variantId`, `productTitle`, `productHandle`, `variantTitle` (`null` for a one-variant product), `options`, `image`, `unitPrice`, `total`. `unitPrice` is what one item costs in that line (Shopify's `amountPerQuantity`, so a subscription price shows as such), not the variant's list price.
 - `count` is Shopify's total quantity. `ready` is false until the stored cart has been read back: show no "empty cart" before then.
 - The store does one change at a time, so a double click cannot add twice (`busy` is true meanwhile). When Shopify says the stored cart no longer exists (after checkout or expiry), it forgets it and the next add starts a new one. On any other error it keeps the cart as it was and puts the message in `error`: show it near the button.
 - The cart id is kept in the browser's `localStorage` under `shopify-cart-id`.

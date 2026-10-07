@@ -220,6 +220,10 @@ export const cartFragment = /* GraphQL */ `
               amount
               currencyCode
             }
+            amountPerQuantity {
+              amount
+              currencyCode
+            }
           }
           merchandise {
             ... on ProductVariant {

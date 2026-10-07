@@ -159,7 +159,7 @@ export function cartLines(cart: Cart | null): CartLineView[] {
     variantTitle: line.merchandise.title === "Default Title" ? null : line.merchandise.title,
     options: line.merchandise.selectedOptions,
     image: line.merchandise.product.featuredImage,
-    unitPrice: line.merchandise.price,
+    unitPrice: line.cost.amountPerQuantity ?? line.merchandise.price,
     total: line.cost.totalAmount,
   }));
 }

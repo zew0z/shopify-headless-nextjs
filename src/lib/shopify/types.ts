@@ -290,6 +290,8 @@ export interface CartLineMerchandise {
 
 export interface CartLineCost {
   totalAmount: Money;
+  /** What one item costs in this line, selling plan and discounts included. */
+  amountPerQuantity?: Money;
   subtotalAmount?: Money;
 }
 
