@@ -172,3 +172,40 @@ test("card inputs are found by name, id, placeholder or autocomplete", () => {
   const found = findPaymentForms(dir, listSourceFiles(dir));
   assert.deepEqual(found.map((f) => f.line), [1, 2, 3]);
 });
+
+test("tidy constants, fonts and size lists are not store content; a product image url is not a menu", () => {
+  const dir = makeFixture({
+    "src/constants/breakpoints.ts": "export const breakpoints = { sm: 640, md: 768 };\n",
+    "src/config/fonts.ts": 'export const fonts = ["Inter", "Lora"];\n',
+    "src/data/sizes.ts": 'export const sizes = ["S", "M", "L"];\n',
+    "src/data/gallery.ts": 'export const gallery = [{ title: "Hero", image: { url: "/a.jpg" } }];\n',
+    "src/data/navigation.ts": 'export const headerMenu = [{ label: "Shop", href: "/shop" }];\n',
+    "src/data/collections.ts": 'export const collections = [{ handle: "throws", title: "Throws" }];\n',
+  });
+  const files = listSourceFiles(dir);
+  const found = findSiteData(dir, files, findProductData(dir, files));
+  assert.deepEqual(found.map((s) => `${s.file}: ${s.what}`), ["src/data/collections.ts: collection list", "src/data/navigation.ts: menu"]);
+});
+
+test("gift card fields and a lone expiry field are not card payment forms", () => {
+  const dir = makeFixture({
+    "src/Gift.tsx": '<input placeholder="Gift card number" />\n<input name="giftCardCode" id="gift-card-number" />\n<input name="expiry" />\n',
+    "src/Pay.tsx": '<input name="cardNumber" />\n<input name="expiry" />\n<input autoComplete="cc-csc" />\n<input name="cvc" />\n',
+    "src/Far.tsx": '<input name="expiry" />\n<p>a</p>\n<p>b</p>\n<p>c</p>\n<p>d</p>\n<input name="cvv" />\n',
+  });
+  const found = findPaymentForms(dir, listSourceFiles(dir)).map((f) => `${f.file}:${f.line}`);
+  assert.deepEqual(found, ["src/Far.tsx:6", "src/Pay.tsx:1", "src/Pay.tsx:2", "src/Pay.tsx:3", "src/Pay.tsx:4"]);
+});
+
+test("a call to a Shopify-backed dynamic route is not a fake API; one serving hardcoded data still is", () => {
+  const dir = makeFixture({
+    "src/app/api/products/[id]/route.ts": 'import { getProduct } from "@/lib/shopify";\nexport async function GET() {}\n',
+    "src/app/api/items/[...slug]/route.ts": 'import { items } from "@/data/items";\nexport async function GET() {}\n',
+    "src/data/items.ts": "export const items = [{ title: 'A', price: 1 }, { title: 'B', price: 2 }];\n",
+    "src/components/One.tsx": "fetch(`/api/products/${id}`)\n",
+    "src/components/Two.tsx": "fetch(`/api/items/${id}`)\n",
+  });
+  const files = listSourceFiles(dir);
+  const apis = findFakeApis(dir, files).map((a) => `${a.file}:${a.kind}`);
+  assert.deepEqual(apis, ["src/app/api/items/[...slug]/route.ts:route", "src/components/Two.tsx:fetch"]);
+});

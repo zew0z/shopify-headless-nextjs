@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const PRICE_KEY = /(?:^|[\s{,])["']?(?:price|amount|cost)["']?\s*:/;
@@ -90,15 +90,41 @@ export function importsFile(routeFile, spec, dataFile) {
   return target === rest || target.endsWith(`/${stripExt(rest)}`);
 }
 
-/** True when the route file behind `/api/<x>` imports the SDK, so its answers come from Shopify. */
-function routeUsesSdk(dir, target) {
-  const route = target.replace(/^\/api\//, "").split(/[?#]/)[0].replace(/\/$/, "");
-  if (!target.startsWith("/api/") || !route) return false;
-  for (const root of ["src/app", "app"]) {
-    for (const ext of ["ts", "tsx", "js", "jsx"]) {
-      const file = `${root}/api/${route}/route.${ext}`;
-      if (existsSync(path.join(dir, file))) return SDK_IMPORT.test(read(dir, file));
+const DYNAMIC_FOLDER = /^\[{1,2}(\.\.\.)?[^\]]+\]{1,2}$/;
+
+/** The route file under `folder` for these URL segments: literal folders, or [id] / [...slug] / [[...slug]] folders. */
+function findRouteFile(dir, folder, segments) {
+  if (!segments.length) {
+    const ext = ["ts", "tsx", "js", "jsx"].find((e) => existsSync(path.join(dir, folder, `route.${e}`)));
+    return ext ? `${folder}/route.${ext}` : null;
+  }
+  let entries;
+  try {
+    entries = readdirSync(path.join(dir, folder), { withFileTypes: true }).filter((e) => e.isDirectory());
+  } catch {
+    return null;
+  }
+  const [segment, ...rest] = segments;
+  const literal = segment.includes("${") ? [] : entries.filter((e) => e.name === segment);
+  const dynamic = entries.filter((e) => DYNAMIC_FOLDER.test(e.name));
+  for (const e of [...literal, ...dynamic]) {
+    const catchAll = e.name.includes("...");
+    // A catch-all folder takes this segment and any that follow.
+    for (const tail of catchAll ? segments.map((_, i) => segments.slice(i + 1)) : [rest]) {
+      const found = findRouteFile(dir, `${folder}/${e.name}`, tail);
+      if (found) return found;
     }
+  }
+  return null;
+}
+
+/** True when the route file behind `/api/...` imports the SDK, so its answers come from Shopify. */
+function routeUsesSdk(dir, target) {
+  if (!target.startsWith("/api/")) return false;
+  const segments = target.split(/[?#]/)[0].split("/").filter(Boolean);
+  for (const root of ["src/app", "app"]) {
+    const file = findRouteFile(dir, root, segments);
+    if (file && SDK_IMPORT.test(read(dir, file))) return true;
   }
   return false;
 }
@@ -167,6 +193,15 @@ const STRING_LITERAL = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*
 const KEY = /(?:^|[\s{,])["']?(\w+)["']?\s*:/gm;
 const CLAIM_NAME = /site|announce|shipping|contact|social/i;
 
+/** A link list: one object with a link (href or url) next to a label, title or name. A product's image url is not one. */
+function hasLinkList(text) {
+  const flat = text.replace(/\$\{[^{}]*\}/g, "x");
+  return (flat.match(/\{[^{}]*\}/g) ?? []).some((obj) => {
+    const keys = [...obj.matchAll(KEY)].map((m) => m[1].toLowerCase());
+    return keys.some((k) => k === "href" || k === "url") && keys.some((k) => k === "label" || k === "title" || k === "name");
+  });
+}
+
 /** The first exported array or object literal of a source file: its line and the names it is exported under. */
 function exportedLiteral(file, text) {
   if (file.endsWith(".json")) {
@@ -203,10 +238,14 @@ export function findSiteData(dir, files, productData = findProductData(dir, file
     if (!exported) continue;
     const keys = [...text.matchAll(KEY)].map((m) => m[1]);
     const what = [];
-    if (keys.some((k) => /^(href|url)$/i.test(k))) what.push("menu");
+    if (hasLinkList(text)) what.push("menu");
     if ([...text.matchAll(STRING_LITERAL)].some((m) => m[0].length >= 202)) what.push("policy or page text");
     if ([...exported.names, ...keys].some((n) => CLAIM_NAME.test(n))) what.push("store claim");
-    found.push({ file, line: exported.line, what: what.length ? what.join(", ") : "store content" });
+    // A typed-in list of collections (handle and title) is store content too: Shopify owns collections.
+    if (!what.length && [...exported.names, path.posix.basename(file)].some((n) => /collection/i.test(n)) && keys.includes("handle")) {
+      what.push("collection list");
+    }
+    if (what.length) found.push({ file, line: exported.line, what: what.join(", ") });
   }
   return found;
 }
@@ -233,17 +272,32 @@ export function findInventedFields(dir, files) {
 }
 
 const CARD_ATTRIBUTE = /\b(name|id|placeholder|autocomplete)\s*=\s*\{?\s*(["'`])([^"'`]*)\2/gi;
-const CARD_WORDS = /cc-number|cc-csc|cc-exp|card ?number|cvc|cvv|expiry/i;
+const CARD_WORDS = /cc-number|cc-csc|cc-exp|card ?number|cvc|cvv/i;
+// An expiry field alone could be a coupon or a product: it counts beside card words or card fields.
+const EXPIRY_WORDS = /expiry|exp-date/i;
+const MENTIONS_CARD = /card|\bcc\b|cc-/i;
+const NEAR = 3;
 
-/** Inputs that ask for card details. Shopify's checkout takes payment, never this frontend. */
+/** Inputs that ask for card details (gift card fields do not count). Shopify's checkout takes payment, never this frontend. */
 export function findPaymentForms(dir, files) {
   const found = [];
   for (const file of files) {
     if (TEST_FILE.test(file) || !/\.[jt]sx?$/.test(file)) continue;
+    const hits = [];
     read(dir, file).split("\n").forEach((text, i) => {
-      const m = [...text.matchAll(CARD_ATTRIBUTE)].find((a) => CARD_WORDS.test(a[3]));
-      if (m) found.push({ file, line: i + 1, what: `${m[1]}="${m[3]}"` });
+      if (/gift/i.test(text)) return;
+      const attributes = [...text.matchAll(CARD_ATTRIBUTE)];
+      const strong = attributes.find((a) => CARD_WORDS.test(a[3]));
+      const weak = attributes.find((a) => EXPIRY_WORDS.test(a[3]));
+      if (strong) hits.push({ line: i + 1, attribute: strong, strong: true });
+      else if (weak) hits.push({ line: i + 1, attribute: weak, strong: MENTIONS_CARD.test(text) });
     });
+    const confirmed = hits.filter((h) => h.strong);
+    for (const h of hits) {
+      if (h.strong || confirmed.some((c) => Math.abs(c.line - h.line) <= NEAR)) {
+        found.push({ file, line: h.line, what: `${h.attribute[1]}="${h.attribute[3]}"` });
+      }
+    }
   }
   return found;
 }

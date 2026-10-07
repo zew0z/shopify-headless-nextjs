@@ -156,7 +156,7 @@ export function summariseAudit(audit) {
   const { stack, productData, dataReaders, fakeApis, siteData, inventedFields, paymentForms, unused, cart, cachingOff, hardcodedMoney, images } = audit;
   const lines = [stack.supported ? `Kit fits: ${stack.reason}` : `Stop: ${stack.reason}`];
   if (paymentForms.length) {
-    lines.push(`Most urgent: ${places(paymentForms.length)} with a card payment form. Card details must never be typed into this site; Shopify's checkout takes the payment, so remove it:`);
+    lines.push(`Most urgent: ${places(paymentForms.length)} that look like a card payment form. Check whether it asks for card details; if it does, Shopify's checkout takes the payment, so remove it (after telling the owner):`);
     for (const f of paymentForms) lines.push(`  ${f.file}:${f.line} ${f.what}`);
   }
   const total = productData.reduce((sum, d) => sum + d.count, 0);
