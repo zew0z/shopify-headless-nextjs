@@ -123,7 +123,7 @@ images: { remotePatterns: [{ protocol: "https", hostname: "cdn.shopify.com", pat
   ```
 
   A `null` entry means this product has no value: hide that bit of UI.
-- **Subscriptions:** show them only from `product.sellingPlanGroups.nodes[].sellingPlans.nodes` (name, description, `priceAdjustments`). Never work out a subscription discount in the browser. The cart line gets the plan: `{ merchandiseId, quantity, sellingPlanId }`. When `product.requiresSellingPlan` is true, the shopper must pick a plan before adding; do not offer a one-time purchase.
+- **Subscriptions:** show them only from `product.sellingPlanGroups.nodes[].sellingPlans.nodes` (name, description, `priceAdjustments`). `getProduct` does not ask Shopify for plan prices, so show the plan's name, description and adjustment exactly as Shopify states it (a percent or a fixed amount), show no computed price, and let the cart's cost show the real price. Never work out a subscription discount in the browser. The cart line gets the plan: `{ merchandiseId, quantity, sellingPlanId }`. When `product.requiresSellingPlan` is true, the shopper must pick a plan before adding; do not offer a one-time purchase.
 - **Stock:** "Only N left" comes only from `getProductStock(handle)` (a server component call; it answers `{ [variantId]: quantity | null }`). Shopify answers only when the Storefront token has the `unauthenticated_read_product_inventory` scope. Without it the call throws a message naming the scope. Catch that one call, hide the stock line, and tell the owner. The rest of the page does not depend on it. Never show a stock number the owner did not ask for or Shopify did not send.
 
 ## Header, footer, policies and pages
@@ -241,7 +241,7 @@ Every add needs a **variant id** (`gid://shopify/ProductVariant/...`). A product
 
 ## Errors
 
-kit-install adds `app/error.tsx` and `app/global-error.tsx` when the frontend has none. Every catalogue and content read throws when Shopify fails, and those pages are what the shopper sees then. Never catch a Shopify error to show something else in its place (an empty list, a default price, an old copy of the text). A missing product, collection, page or policy is a `null`, not an error: `notFound()`.
+kit-install adds `<app>app/error.tsx` and `<app>app/global-error.tsx` (so `src/app/` or `app/`) when the frontend has none. Every catalogue and content read throws when Shopify fails, and those pages are what the shopper sees then. Never catch a Shopify error to show something else in its place (an empty list, a default price, an old copy of the text). A missing product, collection, page or policy is a `null`, not an error: `notFound()`.
 
 ## No development store yet? Practise on mock.shop
 

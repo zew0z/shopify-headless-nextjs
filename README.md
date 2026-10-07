@@ -59,7 +59,7 @@ flowchart TD
    - Query engine supporting Shopify's `predictiveSearch` GraphQL query for instant multi-resource suggestions (products, collections, search queries).
 
 5. **Paged Reads & Filters**:
-   - `getProductsPage`, `getCollectionProductsPage` and `searchProducts` return `{ products, pageInfo, filters }`, so lists page with a cursor and filter in Shopify, not in memory. `getProductStock` reads per-variant stock when the token has the inventory scope.
+   - `getProductsPage`, `getCollectionProductsPage` and `searchProducts` return `{ products, pageInfo, filters }`, so lists page with a cursor and filter in Shopify, not in memory. `getCollectionProductsPage` returns `null` for a missing collection, and `getProductsPage` has no filters. `getProductStock` reads per-variant stock when the token has the inventory scope.
 
 6. **Store Content Reads**:
    - `getShop`, `getMenu`, `getPolicies`, `getPolicy` and `getPage` read the shop name, menus, legal policies and info pages from Shopify (cached an hour); `menuLinks` turns menu URLs into site paths.

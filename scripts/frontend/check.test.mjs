@@ -168,6 +168,16 @@ test("a layout that switches caching off fails, because every page under it is u
   assert.deepEqual(r["Pages that show products are cached"].where, ['src/app/layout.tsx:1 fetchCache = "force-no-store"']);
 });
 
+test("a page wired with the paged or content reads is checked for uncached settings too", () => {
+  for (const call of ["getProductsPage", "getCollectionProductsPage", "searchProducts", "getShop", "getMenu", "getPolicies", "getPolicy", "getPage"]) {
+    const page = `import { ${call} } from "@/lib/shopify";
+export const dynamic = "force-dynamic";
+export default async function P() { await ${call}({}); return null; }`;
+    const r = byWhat(checkWiring(makeFixture({ ...WIRED, "src/app/page.tsx": page })));
+    assert.deepEqual(r["Pages that show products are cached"].where, ['src/app/page.tsx:2 dynamic = "force-dynamic"'], call);
+  }
+});
+
 test("smokeSite passes when the home page and a product page show Shopify images", async () => {
   const pages = {
     "http://x/": '<a href="/products/slides">x</a><img src="https://cdn.shopify.com/a.jpg">',

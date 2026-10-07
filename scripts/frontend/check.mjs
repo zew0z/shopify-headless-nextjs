@@ -5,7 +5,7 @@ import { auditFrontend, isKitRoute } from "./audit.mjs";
 import { findImporters } from "./sources.mjs";
 import { listSourceFiles } from "./walk.mjs";
 
-const CATALOGUE_CALL = /\b(getProducts?|getCollections?|getCollectionProducts|getProductRecommendations)\s*\(/;
+const CATALOGUE_CALL = /\b(getProducts?|getProductsPage|getCollections?|getCollectionProducts|getCollectionProductsPage|searchProducts|getProductRecommendations|getShop|getMenu|getPolicies|getPolicy|getPage)\s*\(/;
 const LAYOUT = /^(src\/)?app\/(.+\/)?layout\.[jt]sx?$/;
 // The kit's cart client, which the wiring guide uses, calls /api/cart for the frontend.
 const CART_CLIENT_IMPORT = /\bfrom\s+["'][^"']*lib\/shopify\/cart-client["']/;
