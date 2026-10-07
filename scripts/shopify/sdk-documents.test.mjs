@@ -34,3 +34,10 @@ test("removing a gift card needs the applied card ids, and the cart query return
   assert.doesNotMatch(remove, /giftCardCodes/);
   assert.match(docs.getCartQuery, /appliedGiftCards\s*\{\s*id\b/);
 });
+
+test("product options carry swatches, and only the product page asks for subscriptions and extra fields", () => {
+  assert.match(docs.getProductsQuery, /optionValues\s*\{[^}]*swatch/s);
+  assert.match(docs.getProductByHandleQuery, /sellingPlanGroups/);
+  assert.match(docs.getProductByHandleQuery, /metafields\(identifiers: \$metafields\)/);
+  assert.doesNotMatch(docs.getProductsQuery, /sellingPlanGroups|quantityAvailable/);
+});

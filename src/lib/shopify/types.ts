@@ -42,10 +42,51 @@ export interface SelectedOption {
   value: string;
 }
 
+export interface ProductOptionValue {
+  id: string;
+  name: string;
+  /** Set when the shop gave this value a colour or a picture (a swatch). */
+  swatch: { color: string | null; image: { previewImage: ShopifyImage | null } | null } | null;
+}
+
 export interface ProductOption {
   id: string;
   name: string;
   values: string[];
+  optionValues: ProductOptionValue[];
+}
+
+/** An extra product field set in the Shopify admin (a metafield). */
+export interface Metafield {
+  namespace: string;
+  key: string;
+  type: string;
+  value: string;
+}
+
+export interface MetafieldIdentifier {
+  namespace: string;
+  key: string;
+}
+
+export interface SellingPlan {
+  id: string;
+  name: string;
+  description: string | null;
+  recurringDeliveries: boolean;
+  priceAdjustments: Array<{
+    orderCount: number | null;
+    adjustmentValue:
+      | { __typename: "SellingPlanPercentagePriceAdjustment"; adjustmentPercentage: number }
+      | { __typename: "SellingPlanFixedAmountPriceAdjustment"; adjustmentAmount: Money }
+      | { __typename: "SellingPlanFixedPriceAdjustment"; price: Money };
+  }>;
+}
+
+export interface SellingPlanGroup {
+  name: string;
+  options: Array<{ name: string; values: string[] }>;
+  sellingPlans: { nodes: SellingPlan[] };
 }
 
 export interface SellingPlanAllocation {
@@ -94,6 +135,11 @@ export interface Product {
   compareAtPriceRange?: PriceRange | null;
   options: ProductOption[];
   variants: Connection<ProductVariant>;
+  /** Product page only (getProduct): subscriptions and extra fields. */
+  requiresSellingPlan?: boolean;
+  sellingPlanGroups?: { nodes: SellingPlanGroup[] };
+  /** In the order getProduct was asked for them; null where the product has none. */
+  metafields?: Array<Metafield | null>;
   seo?: {
     title: string | null;
     description: string | null;

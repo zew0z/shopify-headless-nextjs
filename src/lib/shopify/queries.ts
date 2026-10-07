@@ -96,6 +96,18 @@ export const productFragment = /* GraphQL */ `
       id
       name
       values
+      optionValues {
+        id
+        name
+        swatch {
+          color
+          image {
+            previewImage {
+              ...ImageFragment
+            }
+          }
+        }
+      }
     }
     variants(first: 50) {
       edges {
@@ -303,12 +315,70 @@ export const getProductsQuery = /* GraphQL */ `
 `;
 
 export const getProductByHandleQuery = /* GraphQL */ `
-  query GetProductByHandle($handle: String!) {
+  query GetProductByHandle($handle: String!, $metafields: [HasMetafieldsIdentifier!]! = []) {
     product(handle: $handle) {
       ...ProductFragment
+      requiresSellingPlan
+      sellingPlanGroups(first: 5) {
+        nodes {
+          name
+          options {
+            name
+            values
+          }
+          sellingPlans(first: 10) {
+            nodes {
+              id
+              name
+              description
+              recurringDeliveries
+              priceAdjustments {
+                orderCount
+                adjustmentValue {
+                  __typename
+                  ... on SellingPlanPercentagePriceAdjustment {
+                    adjustmentPercentage
+                  }
+                  ... on SellingPlanFixedAmountPriceAdjustment {
+                    adjustmentAmount {
+                      amount
+                      currencyCode
+                    }
+                  }
+                  ... on SellingPlanFixedPriceAdjustment {
+                    price {
+                      amount
+                      currencyCode
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      metafields(identifiers: $metafields) {
+        namespace
+        key
+        type
+        value
+      }
     }
   }
   ${productFragment}
+`;
+
+export const getProductStockQuery = /* GraphQL */ `
+  query GetProductStock($handle: String!) {
+    product(handle: $handle) {
+      variants(first: 250) {
+        nodes {
+          id
+          quantityAvailable
+        }
+      }
+    }
+  }
 `;
 
 export const getProductRecommendationsQuery = /* GraphQL */ `

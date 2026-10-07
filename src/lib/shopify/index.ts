@@ -23,11 +23,13 @@ import {
   Filter,
   ProductPage,
   SearchProductsOptions,
+  MetafieldIdentifier,
 } from "./types";
 import {
   shopQuery,
   getProductsQuery,
   getProductByHandleQuery,
+  getProductStockQuery,
   getProductRecommendationsQuery,
   getCollectionsQuery,
   getCollectionByHandleQuery,
@@ -233,7 +235,7 @@ export async function searchProducts(options: SearchProductsOptions): Promise<Pr
  */
 export async function getProduct(
   handle: string,
-  options?: { cache?: RequestCache; revalidate?: number }
+  options?: { cache?: RequestCache; revalidate?: number; metafields?: MetafieldIdentifier[] }
 ): Promise<Product | null> {
   requireShopify();
 
@@ -241,13 +243,42 @@ export async function getProduct(
     product: Product | null;
   }>({
     query: getProductByHandleQuery,
-    variables: { handle },
+    variables: { handle, metafields: options?.metafields ?? [] },
     cache: options?.cache ?? CATALOGUE_CACHE,
     tags: ["products", `product-${handle}`],
     revalidate: options?.revalidate,
   });
 
   return res.body.data?.product || null;
+}
+
+/**
+ * How many of each variant are left. Separate from getProduct because Shopify
+ * only answers when the Storefront token has the unauthenticated_read_product_inventory
+ * scope; without it this throws and says so, and the product page still works.
+ */
+export async function getProductStock(handle: string): Promise<Record<string, number | null>> {
+  requireShopify();
+  try {
+    const res = await shopifyFetch<{
+      product: { variants: { nodes: Array<{ id: string; quantityAvailable: number | null }> } } | null;
+    }>({
+      query: getProductStockQuery,
+      variables: { handle },
+      cache: CATALOGUE_CACHE,
+      tags: ["products", `product-${handle}`],
+    });
+    const nodes = dataOrThrow(res.body.data).product?.variants.nodes ?? [];
+    return Object.fromEntries(nodes.map((v) => [v.id, v.quantityAvailable]));
+  } catch (err) {
+    if (err instanceof Error && /access denied/i.test(err.message)) {
+      throw new ShopifyError(
+        "Shopify will not share stock counts: give the Storefront token the unauthenticated_read_product_inventory scope, or hide the stock line.",
+        403
+      );
+    }
+    throw err;
+  }
 }
 
 /**
