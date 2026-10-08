@@ -18,6 +18,7 @@ import {
   PredictiveSearchResult,
   CartUserError,
   ShopInfo,
+  ShopAnalytics,
   ConnectionHealthCheck,
   PageInfo,
   Filter,
@@ -27,6 +28,7 @@ import {
 } from "./types";
 import {
   shopQuery,
+  shopAnalyticsQuery,
   getProductsQuery,
   getProductByHandleQuery,
   getProductStockQuery,
@@ -85,6 +87,37 @@ export async function getShopInfo(): Promise<ShopInfo | null> {
     return res.body.data?.shop || null;
   } catch (err) {
     console.warn("[Shopify SDK] getShopInfo error:", err);
+    return null;
+  }
+}
+
+/**
+ * What <ShopifyAnalytics> needs about the shop. Analytics must never take a page
+ * down, so this never throws: it returns null, with one console error saying why,
+ * when there is no public Storefront token (the visitor's browser needs it to ask
+ * Shopify for consent) or Shopify did not answer. Cached for a day.
+ */
+export async function getShopAnalytics(): Promise<ShopAnalytics | null> {
+  if (!isShopifyConfigured) return null;
+  if (!shopifyConfig.publicAccessToken) {
+    console.error("[Shopify analytics] Off: set NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN (the public token). Shopify's privacy script needs it in the browser.");
+    return null;
+  }
+  try {
+    const res = await shopifyFetch<{
+      shop: { id: string; primaryDomain: { host: string }; paymentSettings: { currencyCode: string } };
+      localization: { language: { isoCode: string } };
+    }>({ query: shopAnalyticsQuery, cache: "force-cache", revalidate: 86400, tags: ["shop"] });
+    const { shop, localization } = dataOrThrow(res.body.data);
+    return {
+      shopId: shop.id,
+      currency: shop.paymentSettings.currencyCode,
+      acceptedLanguage: localization.language.isoCode,
+      checkoutDomain: shop.primaryDomain.host,
+      storefrontAccessToken: shopifyConfig.publicAccessToken,
+    };
+  } catch (err) {
+    console.error("[Shopify analytics] Off for this page: could not read the shop from Shopify.", err);
     return null;
   }
 }

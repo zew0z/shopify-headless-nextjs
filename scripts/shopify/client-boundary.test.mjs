@@ -5,7 +5,10 @@ import path from "node:path";
 import { findSdkDir } from "./sdk-dir.mjs";
 
 // These files run in the browser, so they must not pull in anything that reads server-only settings.
-const BROWSER_SAFE = ["cart-store.ts", "cart-provider.tsx", "variants.ts", "menu.ts", "money.ts"];
+const BROWSER_SAFE = [
+  "cart-store.ts", "cart-provider.tsx", "variants.ts", "menu.ts", "money.ts",
+  "analytics-events.ts", "privacy.ts", "analytics-tracker.ts", "analytics.tsx",
+];
 // "./client", "../client.ts", "@/lib/shopify" (which is index) and "@/lib/shopify/config".
 const SERVER_ONLY = /^\.{1,2}\/(?:.*\/)?(?:client|config|index)(?:\.[jt]sx?)?$|(?:^|\/)lib\/shopify(?:\/(?:client|config|index)(?:\.[jt]sx?)?)?$/;
 

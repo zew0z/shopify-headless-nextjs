@@ -141,7 +141,10 @@ function wrapConsent(cp: CustomerPrivacy, config: Record<string, unknown>) {
   wrapped.set(cp, state);
   const original = cp.setTrackingConsent;
   cp.setTrackingConsent = (consent, callback) => {
-    const { locale: _locale, country: _country, ...headless } = state.config;
+    // Language and country are for the banner only.
+    const headless = { ...state.config };
+    delete headless.locale;
+    delete headless.country;
     original.call(cp, { ...headless, headlessStorefront: true, ...consent }, callback);
   };
 }

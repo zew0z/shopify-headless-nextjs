@@ -35,8 +35,23 @@ function isCartGone(err: unknown): boolean {
   return err instanceof Error && /cart does not exist/i.test(err.message);
 }
 
-export function createCartStore(options: { action?: typeof cartAction; storage?: CartStorage; goTo?: (url: string) => void } = {}): CartStore {
+export function createCartStore(
+  options: {
+    action?: typeof cartAction;
+    storage?: CartStorage;
+    goTo?: (url: string) => void;
+    /** Told about every successful add, with Shopify's cart (cart-provider passes Shopify analytics). Its failures are ignored. */
+    onAdd?: (cart: Cart, lines: CartItemInput[]) => void;
+  } = {}
+): CartStore {
   const action = options.action ?? cartAction;
+  const reportAdd = (cart: Cart, lines: CartItemInput[]) => {
+    try {
+      options.onAdd?.(cart, lines);
+    } catch (err) {
+      console.warn("[Shopify] The add-to-cart report failed:", err);
+    }
+  };
   const storage = options.storage ?? localCartStorage();
   const goTo = options.goTo ?? ((url: string) => { window.location.href = url; });
   let state: CartState = { cart: null, ready: false, busy: false, error: null };
@@ -107,12 +122,16 @@ export function createCartStore(options: { action?: typeof cartAction; storage?:
           if (isCartGone(err)) return null;
           throw err;
         });
-        if (cart) return cart;
+        if (cart) {
+          reportAdd(cart, lines);
+          return cart;
+        }
         // Shopify no longer has this cart: forget it and start a new one with the same lines.
         storage.clear();
       }
       const created = await action({ action: "create", lines });
       if (!created) throw new Error("This shop is not connected to Shopify yet.");
+      reportAdd(created, lines);
       return created;
     }),
     update: (lineId, quantity) => run(async () => {

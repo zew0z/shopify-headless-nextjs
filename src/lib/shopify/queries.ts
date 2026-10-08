@@ -42,6 +42,26 @@ export const shopQuery = /* GraphQL */ `
   }
 `;
 
+/** What Shopify analytics needs about the shop (getShopAnalytics). */
+export const shopAnalyticsQuery = /* GraphQL */ `
+  query GetShopAnalytics {
+    shop {
+      id
+      primaryDomain {
+        host
+      }
+      paymentSettings {
+        currencyCode
+      }
+    }
+    localization {
+      language {
+        isoCode
+      }
+    }
+  }
+`;
+
 export const imageFragment = /* GraphQL */ `
   fragment ImageFragment on Image {
     url
@@ -229,6 +249,7 @@ export const cartFragment = /* GraphQL */ `
             ... on ProductVariant {
               id
               title
+              sku
               selectedOptions {
                 name
                 value
@@ -241,6 +262,8 @@ export const cartFragment = /* GraphQL */ `
                 id
                 handle
                 title
+                vendor
+                productType
                 featuredImage {
                   ...ImageFragment
                 }

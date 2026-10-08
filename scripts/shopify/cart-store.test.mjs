@@ -29,6 +29,24 @@ test("a failed change keeps the cart and shows the message; the next success cle
   assert.equal(store.getState().error, null);
 });
 
+test("a successful add is reported with Shopify's cart and the added lines; a failed one is not", async () => {
+  const added = [];
+  let fail = false;
+  const action = async () => { if (fail) throw new Error("Out of stock"); return cart("gid://shopify/Cart/1"); };
+  const store = createCartStore({ action, storage: memory(), onAdd: (c, lines) => added.push([c.id, lines]) });
+  await store.add([{ merchandiseId: "v1", quantity: 2 }]);
+  fail = true;
+  await store.add([{ merchandiseId: "v1", quantity: 1 }]);
+  assert.deepEqual(added, [["gid://shopify/Cart/1", [{ merchandiseId: "v1", quantity: 2 }]]]);
+});
+
+test("a broken add report never breaks the cart", async () => {
+  const store = createCartStore({ action: async () => cart("gid://shopify/Cart/1"), storage: memory(), onAdd: () => { throw new Error("analytics down"); } });
+  await store.add([{ merchandiseId: "v1", quantity: 1 }]);
+  assert.equal(store.getState().error, null);
+  assert.equal(store.getState().cart.id, "gid://shopify/Cart/1");
+});
+
 test("a stored cart Shopify no longer has is dropped on load", async () => {
   const storage = memory("gid://shopify/Cart/old");
   const store = createCartStore({ action: async () => null, storage });

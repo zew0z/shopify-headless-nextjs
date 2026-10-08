@@ -6,11 +6,13 @@
  */
 import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createCartStore, cartLines, type CartStore } from "./cart-store";
+import { trackAddToCart } from "./analytics";
 
 const CartContext = createContext<CartStore | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [store] = useState(() => createCartStore());
+  // Adds are reported to Shopify analytics; nothing is sent unless <ShopifyAnalytics> is on the page and the visitor consented.
+  const [store] = useState(() => createCartStore({ onAdd: trackAddToCart }));
   useEffect(() => {
     void store.load();
   }, [store]);

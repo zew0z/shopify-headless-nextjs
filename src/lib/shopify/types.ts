@@ -409,6 +409,19 @@ export interface ShopInfo {
   };
 }
 
+/** What <ShopifyAnalytics> needs, from getShopAnalytics(). Safe to hand to the browser. */
+export interface ShopAnalytics {
+  /** gid://shopify/Shop/<id> */
+  shopId: string;
+  currency: string;
+  /** Language code, e.g. "EN". */
+  acceptedLanguage: string;
+  /** The shop's primary domain, where checkout lives (checkout.<domain> in this kit's setup). */
+  checkoutDomain: string;
+  /** The public Storefront API token. */
+  storefrontAccessToken: string;
+}
+
 export interface ConnectionHealthCheck {
   isConfigured: boolean;
   canConnect: boolean;
