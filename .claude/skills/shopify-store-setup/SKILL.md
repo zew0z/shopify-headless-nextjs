@@ -60,3 +60,7 @@ Only while the human is logged into Shopify and watching. Never type a password,
 ## Done means
 
 `pnpm shop-setup status` shows every step done or marked n/a with a reason, the `go-live` step has been walked through with the owner, the test order was placed and refunded, an invoice was issued for it, and credentials were rotated. Anything marked "unverified" along the way is repeated back to the owner at the end.
+
+## Shopify visits and page views
+
+Follow `docs/shopify-analytics.md`: explicitly enable/configure verified public store metadata, origins and localization, wire accept/reject/settings/withdraw controls, and run `pnpm shop-setup analytics-check` plus mocked consent/race/browser checks. The `live-view` owner step records actual dashboard evidence on the deployed permitted frontend. Never mark it done from an HTTP response or mocked test. Product/cart events require the experimental opt-in and separate validation; purchases/checkout attribution are outside the visits release. Missing/blocked analytics must not interrupt shopping.

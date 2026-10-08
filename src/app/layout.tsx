@@ -5,7 +5,6 @@ import { CartProvider } from "@/context/cart-context";
 import { Header } from "@/components/Header";
 import { CartDrawer } from "@/components/CartDrawer";
 import { Footer } from "@/components/Footer";
-import { getShopAnalytics } from "@/lib/shopify";
 import { ShopifyAnalytics } from "@/lib/shopify/analytics";
 
 const geistSans = Geist({
@@ -28,7 +27,6 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const shopAnalytics = await getShopAnalytics();
   return (
     <html
       lang="en"
@@ -41,7 +39,7 @@ export default async function RootLayout({
           <CartDrawer />
           <Footer />
         </CartProvider>
-        <ShopifyAnalytics shop={shopAnalytics} />
+        <ShopifyAnalytics />
       </body>
     </html>
   );

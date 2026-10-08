@@ -8,9 +8,10 @@ import { findSdkDir } from "./sdk-dir.mjs";
 const BROWSER_SAFE = [
   "cart-store.ts", "cart-provider.tsx", "variants.ts", "menu.ts", "money.ts",
   "analytics-events.ts", "privacy.ts", "analytics-tracker.ts", "analytics.tsx",
+  "analytics-policy.ts", "analytics-browser.ts", "analytics-script-loader.ts",
 ];
 // "./client", "../client.ts", "@/lib/shopify" (which is index) and "@/lib/shopify/config".
-const SERVER_ONLY = /^\.{1,2}\/(?:.*\/)?(?:client|config|index)(?:\.[jt]sx?)?$|(?:^|\/)lib\/shopify(?:\/(?:client|config|index)(?:\.[jt]sx?)?)?$/;
+const SERVER_ONLY = /^\.{1,2}\/(?:.*\/)?(?:client|config|index|analytics-config|analytics-consent-proxy)(?:\.[jt]sx?)?$|(?:^|\/)lib\/shopify(?:\/(?:client|config|index|analytics-config|analytics-consent-proxy)(?:\.[jt]sx?)?)?$/;
 
 // Every import and re-export with a path, except `import type` / `export type` (types vanish at build).
 const FROM = /\b(import|export)(\s+type\b)?([^;'"]*?)\bfrom\s*["']([^"']+)["']|\bimport\s*(?:\(\s*)?["']([^"']+)["']/g;

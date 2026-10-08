@@ -64,11 +64,12 @@ test("go-live transitively waits for everything a shop needs", () => {
 
 test("analytics: the kit's component and Shopify's banner, then a real visit seen in Live View before go-live", () => {
   assert.match(byId["cookie-consent"].instructions, /ShopifyAnalytics/);
-  assert.match(byId["cookie-consent"].instructions, /Customer privacy/);
+  assert.match(byId["cookie-consent"].instructions, /setAnalyticsConsent/);
+  assert.ok(byId["live-view"].needs.includes("analytics-check"));
   assert.equal(byId["live-view"].owner, "human");
   assert.ok(byId["live-view"].needs.includes("hosting"));
   assert.ok(byId["live-view"].needs.includes("cookie-consent"));
-  assert.match(byId["live-view"].instructions, /localhost/);
+  assert.match(byId["live-view"].instructions, /dashboard evidence/);
   assert.ok(byId["go-live"].needs.includes("live-view"));
 });
 

@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { analyticsConfiguration, checkAnalytics } from "../shopify/analytics-setup.mjs";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "./args.mjs";
@@ -20,9 +21,9 @@ import { REDIRECT_PORT, redirectUri, runOAuth } from "../shopify/oauth.mjs";
 import { listWebhooks, registerWebhooks, webhookSecretStatus } from "../shopify/webhooks.mjs";
 import { loadSdkDocuments, validateDocuments } from "../shopify/validate-storefront.mjs";
 import { shopMismatches, versionStatus } from "../shopify/version.mjs";
-import { bad, heading, info, mask, ok, shopifyEnv, upsertEnv, warn } from "../shopify/env.mjs";
+import { bad, heading, info, mask, ok, shopifyEnv, readEnv, upsertEnv, warn } from "../shopify/env.mjs";
 
-const USAGE = "usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>]";
+const USAGE = "usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | analytics-configure [--enable|--disable] [--shop-id=ID --origins=https://... --country=XX --language=XX --currency=XXX] [--dry-run] | analytics-check [--site=https://...] | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>]";
 const HELP_WORDS = ["--help", "-h", "help"];
 const STATE_FILE = "store-setup.state.json";
 const { command, args, flags } = parseArgs(process.argv.slice(2));
@@ -218,6 +219,21 @@ switch (command) {
     if (run.status === 0) info("Skipped tests are not passes. Check the output above for skips before marking this step done.");
     process.exit(run.status ?? 1);
   }
+  case "analytics-configure": {
+    const { changes, issues } = analyticsConfiguration(flags, readEnv());
+    if (issues.length) { issues.forEach(bad); process.exit(1); }
+    for (const [key, value] of Object.entries(changes)) {
+      info(`${key}=${value}`);
+      if (!flags["dry-run"]) upsertEnv(key, value);
+    }
+    info(flags["dry-run"] ? "Dry run: nothing written." : "Public analytics settings written. Restart the server; update the host settings separately.");
+    break;
+  }
+  case "analytics-check": {
+    const checks = await checkAnalytics({ env: readEnv(), site: typeof flags.site === "string" ? flags.site : undefined });
+    for (const check of checks) { (check.ok ? ok : bad)(check.what); if (!check.ok) check.details.forEach(info); }
+    process.exit(checks.every(c => c.ok) ? 0 : 1);
+  }
   case "frontend-audit": {
     const dir = path.resolve(args[0] ?? ".");
     const audit = auditFrontend(dir);
@@ -240,10 +256,11 @@ switch (command) {
       process.exit(1);
     }
     const plan = planKitInstall({ kitRoot: process.cwd(), target, appRoot: audit.stack.appRoot });
-    const { scripts, devDependencies } = plan.packageJson.add;
+    const { scripts, dependencies, devDependencies } = plan.packageJson.add;
     heading(`Kit into ${target}`);
     info(`${plan.write.length} files to add, ${plan.same.length} already there`);
     if (Object.keys(scripts).length) info(`package.json scripts to add: ${Object.keys(scripts).join(", ")}`);
+    if (Object.keys(dependencies).length) info(`runtime dependencies to add: ${Object.keys(dependencies).join(", ")}`);
     if (Object.keys(devDependencies).length) info(`dev tools to add: ${Object.keys(devDependencies).join(", ")}`);
     if (plan.gitignore.length) info(`.gitignore lines to add: ${plan.gitignore.join(" ")}`);
     if (plan.agentsNote) info("agent instructions to add: the # Store setup block");

@@ -4,7 +4,7 @@
 [![Shopify](https://img.shields.io/badge/Shopify%20Storefront%20API-2026--07-green?style=flat&logo=shopify)](https://shopify.dev/docs/api/storefront)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
 
-A production-grade, modular **Shopify Storefront Backend SDK** engineered for Next.js (App Router & SSR). Designed as a drop-in integration layer to connect any custom frontend to Shopify's modern GraphQL API with zero lock-in and zero external Shopify runtime dependencies.
+A production-grade, modular **Shopify Storefront Backend SDK** engineered for Next.js (App Router & SSR). Designed as a drop-in integration layer to connect any custom frontend to Shopify's modern GraphQL API with zero lock-in and an optional, explicitly enabled Shopify analytics runtime.
 
 ---
 
@@ -188,3 +188,7 @@ See [`SHOPIFY_INTEGRATION_GUIDE.md`](./SHOPIFY_INTEGRATION_GUIDE.md) for full ar
 ## License
 
 MIT
+
+## Consent-gated Shopify visits
+
+See [docs/shopify-analytics.md](docs/shopify-analytics.md) for `analytics-configure`, `analytics-check`, consent controls and actual Shopify dashboard validation. The official framework-neutral preview is pinned; visits are off until configured. Existing product/cart hooks require an explicit experimental opt-in and separate validation.

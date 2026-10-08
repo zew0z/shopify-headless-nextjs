@@ -127,3 +127,13 @@ test("the error pages go under the app root, and an existing CLAUDE.md is left a
   assert.deepEqual(plan.extras.map((e) => e.to).sort(), ["src/app/error.tsx", "src/app/global-error.tsx"]);
   assert.equal(plan.keptErrorPage, false);
 });
+
+test("both app layouts receive the full analytics runtime and exact production dependency; incompatible versions conflict",()=>{
+  for(const appRoot of ["","src/"]){
+    const plan=planKitInstall({kitRoot,target:received(),appRoot});
+    for(const file of ["analytics-browser.ts","analytics-tracker.ts","analytics-config.ts","analytics-consent-proxy.ts","analytics-policy.ts","analytics-script-loader.ts","analytics.tsx"])assert.ok(plan.write.some(w=>w.to===`${appRoot}lib/shopify/${file}`));
+    const route=plan.write.find(w=>w.to===`${appRoot}app/api/shopify/analytics/config/route.ts`);assert.ok(route);assert.match(route.text,/"\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/lib\/shopify/);
+    assert.equal(plan.packageJson.add.dependencies["@shopify/hydrogen"],"2026.10.0-preview.4");assert.ok(plan.write.some(w=>w.to==="docs/shopify-analytics.md"));
+  }
+  const plan=planKitInstall({kitRoot,target:received({"package.json":{dependencies:{next:"16","@shopify/hydrogen":"latest"}}}),appRoot:""});assert.ok(plan.packageJson.conflicts.some(c=>c.key==="dependencies.@shopify/hydrogen"));
+});

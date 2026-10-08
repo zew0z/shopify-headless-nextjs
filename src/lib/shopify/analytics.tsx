@@ -1,84 +1,55 @@
 "use client";
 
-/**
- * Shopify analytics for the storefront, so the shop's Live View and reports
- * count its visitors: a page view on every navigation, product views and add to
- * cart, sent the way Hydrogen sends them, and only with the visitor's consent.
- *
- * In the root layout:   <ShopifyAnalytics shop={await getShopAnalytics()} />
- * On the product page:  <ShopifyProductView product={product} variant={selectedVariant} />
- * The kit's CartProvider reports adds itself; a cart of the site's own calls
- * trackAddToCart(cart, lines) after Shopify's cart comes back.
- * Needs the Storefront API proxy route app/api/[version]/graphql.json/route.ts.
- */
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
-import { createAnalyticsTracker } from "./analytics-tracker";
-import { loadCustomerPrivacy } from "./privacy";
+import { analyticsStore } from "./analytics-browser";
 import type { Cart, CartItemInput, Money, ShopAnalytics } from "./types";
 
-// One per page load, shared by every component below.
-const tracker = createAnalyticsTracker();
-
-export function ShopifyAnalytics({
-  shop,
-  withPrivacyBanner = true,
-}: {
-  /** From getShopAnalytics(). With null nothing is sent. */
-  shop: ShopAnalytics | null;
-  /** Shopify's own cookie banner, set up in the admin under Settings > Customer privacy. Pass false only when the site has its own banner that calls Shopify's setTrackingConsent. */
-  withPrivacyBanner?: boolean;
-}) {
+/** Runtime config is fetched from the site's own server. The old shop prop remains source-compatible. */
+export function ShopifyAnalytics({ withPrivacyBanner = true, nonce }: { shop?: ShopAnalytics | null; withPrivacyBanner?: boolean; nonce?: string }) {
   const pathname = usePathname();
-  const shopId = shop?.shopId;
-  const currency = shop?.currency;
-  const language = shop?.acceptedLanguage;
-  const token = shop?.storefrontAccessToken;
-  const checkoutDomain = shop?.checkoutDomain;
-
-  useEffect(() => {
-    if (!shopId || !currency || !language || !token || !checkoutDomain) return;
-    tracker.setShop({ shopId, currency, acceptedLanguage: language });
-    return loadCustomerPrivacy(
-      { storefrontAccessToken: token, checkoutDomain, withPrivacyBanner, locale: language },
-      { onReady: tracker.ready, onConsent: tracker.consentChanged }
-    );
-  }, [shopId, currency, language, token, checkoutDomain, withPrivacyBanner]);
-
-  useEffect(() => {
-    tracker.page(pathname);
-  }, [pathname]);
-
-  return null;
+  const state = useSyncExternalStore(analyticsStore.subscribe, analyticsStore.getSnapshot, analyticsStore.getServerSnapshot);
+  useEffect(() => { void analyticsStore.visit(nonce); }, [pathname, nonce]);
+  return <>
+    <span hidden data-shopify-analytics data-consent={state.choice} data-published={state.published} data-delivered={state.delivered} data-transport={state.transport} />
+    {withPrivacyBanner && state.enabled && <>
+      <button type="button" onClick={analyticsStore.open} aria-label="Cookie settings" className="fixed bottom-3 left-3 z-40 rounded border bg-white px-3 py-2 text-sm text-black">Cookie settings</button>
+      {state.open && <section aria-label="Cookie preferences" className="fixed inset-x-3 bottom-14 z-50 mx-auto max-w-xl rounded border bg-white p-5 text-black shadow-lg">
+        <p className="font-semibold">Your cookie choice</p>
+        <p className="my-3 text-sm">Essential cookies support shopping. With your permission, Shopify statistics help us understand which public pages people visit. Advertising stays off. You can change your choice here at any time.</p>
+        {state.failed && <p role="status" className="my-2 text-sm">Statistics remain off. You can continue shopping.</p>}
+        <div className="flex flex-wrap gap-3">
+          <button type="button" onClick={() => void analyticsStore.choose(false)} disabled={!state.ready} className="rounded border px-3 py-2">{state.choice === "accepted" ? "Withdraw consent" : "Reject statistics"}</button>
+          <button type="button" onClick={() => void analyticsStore.choose(true)} disabled={!state.ready || state.busy} className="rounded border px-3 py-2">Accept statistics</button>
+          <button type="button" onClick={analyticsStore.close} className="rounded border px-3 py-2">Close</button>
+        </div>
+        {state.busy && <span role="status" className="text-sm">Saving your choice…</span>}
+      </section>}
+    </>}
+  </>;
 }
 
-export function ShopifyProductView({
-  product,
-  variant,
-}: {
+/** For an existing, localized consent UI rendered with withPrivacyBanner={false}. */
+export const setAnalyticsConsent = analyticsStore.choose;
+export const openAnalyticsPreferences = analyticsStore.open;
+export function CookiePreferencesButton({ children = "Cookie settings" }: { children?: React.ReactNode }) {
+  return <button type="button" onClick={analyticsStore.open}>{children}</button>;
+}
+
+/** Preserved product hook; reporting requires SHOPIFY_ANALYTICS_EXPERIMENTAL_EVENTS=1. */
+export function ShopifyProductView({ product, variant }: {
   product: { id: string; title: string; vendor: string; productType?: string | null };
-  /** The selected variant; nothing is reported until there is one. */
   variant: { id: string; title: string; price: Money; sku?: string | null } | null | undefined;
 }) {
   const pathname = usePathname();
-  const { id: productId, title, vendor } = product;
-  const category = product.productType || undefined;
-  const variantId = variant?.id;
-  const variantTitle = variant?.title;
-  const price = variant?.price.amount;
-  const sku = variant?.sku || undefined;
-
+  const variantId = variant?.id, title = variant?.title, price = variant?.price.amount, sku = variant?.sku;
+  const { id, title: name, vendor, productType } = product;
   useEffect(() => {
-    if (!variantId || !price) return;
-    tracker.productView(pathname, [
-      { productGid: productId, variantGid: variantId, name: title, variantName: variantTitle, brand: vendor, category, price, sku, quantity: 1 },
-    ]);
-  }, [pathname, productId, title, vendor, category, variantId, variantTitle, price, sku]);
-
+    if (variantId && price) analyticsStore.productView(pathname, [{ productGid: id, variantGid: variantId, name, variantName: title,
+      brand: vendor, category: productType || undefined, price, sku: sku || undefined, quantity: 1 }]);
+  }, [pathname, id, name, vendor, productType, variantId, title, price, sku]);
   return null;
 }
 
-/** Call after Shopify's cart came back from adding these lines. */
-export function trackAddToCart(cart: Cart, lines: CartItemInput[]): void {
-  tracker.addToCart(cart, lines);
-}
+/** Preserved successful-add hook; uses the official cart delta tracker when explicitly enabled. */
+export function trackAddToCart(cart: Cart, lines: CartItemInput[]) { analyticsStore.addToCart(cart, lines); }

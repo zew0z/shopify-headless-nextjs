@@ -210,6 +210,7 @@ export const filterFragment = /* GraphQL */ `
 export const cartFragment = /* GraphQL */ `
   fragment CartFragment on Cart {
     id
+    updatedAt
     checkoutUrl
     totalQuantity
     cost {

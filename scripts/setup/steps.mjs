@@ -266,15 +266,24 @@ export const STEPS = [
     owner: "code",
     needs: ["intake", "checkout-domain"],
     instructions:
-      `The kit ships Shopify's consent and analytics (docs/frontend-wiring.md, "Shopify analytics"). The agent puts <ShopifyAnalytics shop={await getShopAnalytics()} /> in the root layout and <ShopifyProductView> on the product page, keeps the route app/api/[version]/graphql.json, and in any content security policy allows scripts from cdn.shopify.com and connections to monorail-edge.shopifysvc.com. The owner turns on Shopify's cookie banner: Settings > Customer privacy > Cookie banner. Nothing is sent to Shopify before the visitor consents. ${FALLBACK}`,
+      `Follow docs/shopify-analytics.md. Mount <ShopifyAnalytics /> once in the root layout. Configure the verified permanent store domain, Shop ID, exact permitted origins and localization with pnpm shop-setup analytics-configure --enable plus its public flags. Supply public static paths and the frontend's product path prefix; dynamic products are verified server-side. The default controls accept, reject and withdraw statistics; a custom banner calls setAnalyticsConsent and exposes cookie settings. Allow the Shopify CDN, the Monorail endpoint and this site's consent route in CSP; supply a nonce for inline bootstrap when needed. Missing, rejected or unavailable consent sends nothing. Product/cart hooks require a separate experimental opt-in and are not dashboard-verified by the visits release. ${FALLBACK}`,
+  },
+  {
+    id: "analytics-check",
+    title: "Verify consent-gated visits and page-view wiring",
+    owner: "code",
+    needs: ["cookie-consent", "frontend-check"],
+    instructions:
+      "Run pnpm shop-setup analytics-check, pnpm test:scripts, typecheck, lint and build. Use the mocked browser rehearsal in docs/shopify-analytics.md: pending/rejected consent sends zero events; accept sends the current page only; saved choices restore; withdrawal immediately blocks navigation; blocked scripts leave shopping functional. Run analytics-check --site=https://<frontend> after deployment for public configuration only. No command publishes a synthetic event to a real store. HTTP success alone does not verify dashboard receipt.",
+    automation: "analytics-check",
   },
   {
     id: "live-view",
-    title: "See a real visit in Shopify's Live View",
+    title: "Verify visits and page views in the actual Shopify dashboard",
     owner: "human",
-    needs: ["hosting", "cookie-consent"],
+    needs: ["hosting", "cookie-consent", "analytics-check"],
     instructions:
-      "Open the deployed site (not localhost: Shopify marks visits from localhost as the owner's own) in a private window, accept cookies in the banner, open a product and add it to the cart. Within a few minutes Shopify admin > Analytics > Live View shows the visitor, and the sessions report shows the visit later that day. If nothing shows: check that /api/unstable/graphql.json on the site answers, that checkout is on checkout.<siteDomain>, and the browser console for [Shopify analytics] messages.",
+      "On the deployed permitted HTTPS frontend, open a fresh private session, accept statistics and navigate between public pages. Check Shopify Analytics > Live View and later sessions/page-view reporting in the correct store; record the site origin, time, consent state and observed dashboard evidence in the completion note. A successful Monorail response is not dashboard proof; missing or delayed reporting remains unverified. Local mocked tests do not count as dashboard receipt. This step validates visits/page views only, not cart, purchases or checkout attribution.",
   },
   {
     id: "seo",

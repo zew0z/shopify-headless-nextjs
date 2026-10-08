@@ -9,6 +9,7 @@ function mergePackageJson(file, add) {
   const indent = /^([ \t]+)"/m.exec(text)?.[1] ?? 2;
   const pkg = JSON.parse(text);
   pkg.scripts = { ...pkg.scripts, ...add.scripts };
+  pkg.dependencies = { ...pkg.dependencies, ...add.dependencies };
   pkg.devDependencies = { ...pkg.devDependencies, ...add.devDependencies };
   writeFileSync(file, `${JSON.stringify(pkg, null, indent)}${text.endsWith("\n") ? "\n" : ""}`);
 }
@@ -30,7 +31,7 @@ export function applyKitInstall(plan, target, notes) {
   }
 
   const { add } = plan.packageJson;
-  if (Object.keys(add.scripts).length || Object.keys(add.devDependencies).length) {
+  if (Object.keys(add.scripts).length || Object.keys(add.dependencies ?? {}).length || Object.keys(add.devDependencies).length) {
     mergePackageJson(path.join(target, "package.json"), add);
     changed++;
   }

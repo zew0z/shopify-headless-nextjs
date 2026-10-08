@@ -1,0 +1,20 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { writeFileSync, symlinkSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { planKitInstall } from "./kit.mjs";
+import { applyKitInstall } from "./install.mjs";
+import { makeFixture } from "../test-support/fixture.mjs";
+const kitRoot=process.cwd();
+for(const appRoot of ["","src/"])test(`installed ${appRoot||'root '}app analytics runtime and routes compile and check with the installed scripts`,()=>{
+  const target=makeFixture({"package.json":{scripts:{},dependencies:{next:"16.3.4",react:"19.2.8","react-dom":"19.2.8"}},[`${appRoot}app/page.tsx`]:'export default function Page(){return null;}'});
+  applyKitInstall(planKitInstall({kitRoot,target,appRoot}),target,{audit:"fixture",install:"test"});
+  symlinkSync(path.join(kitRoot,"node_modules"),path.join(target,"node_modules"),'dir');
+  writeFileSync(path.join(target,`${appRoot}app/layout.tsx`),`import {ShopifyAnalytics} from '../lib/shopify/analytics';export default function Layout({children}:{children:React.ReactNode}){return <html><body>{children}<ShopifyAnalytics/></body></html>}`);
+  const run=spawnSync(process.execPath,[path.join(kitRoot,"node_modules/typescript/bin/tsc"),'--noEmit','--strict','--skipLibCheck','--jsx','react-jsx','--target','ES2022','--module','ESNext','--moduleResolution','bundler',`${appRoot}app/layout.tsx`,`${appRoot}app/api/shopify/analytics/config/route.ts`,`${appRoot}app/api/[version]/graphql.json/route.ts`],{cwd:target,encoding:'utf8'});
+  assert.equal(run.status,0,run.stdout+run.stderr);
+  const env={...process.env,SHOPIFY_ANALYTICS_ENABLED:'1',NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN:'fixture.myshopify.com',SHOPIFY_ANALYTICS_SHOP_ID:'1',SHOPIFY_ANALYTICS_ORIGINS:'https://shop.example.com',SHOPIFY_ANALYTICS_COUNTRY:'US',SHOPIFY_ANALYTICS_LANGUAGE:'EN',SHOPIFY_ANALYTICS_CURRENCY:'USD'};
+  const check=spawnSync(process.execPath,['scripts/setup/cli.mjs','analytics-check'],{cwd:target,env,encoding:'utf8'});assert.equal(check.status,0,check.stdout+check.stderr);
+  assert.equal(applyKitInstall(planKitInstall({kitRoot,target,appRoot}),target,{}).changed,0);
+});

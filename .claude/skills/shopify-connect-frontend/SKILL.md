@@ -20,7 +20,7 @@ Steps `frontend-audit` → `kit-install` → `frontend-catalogue` → `frontend-
    - Extra fields, subscriptions, stock: `getProduct(handle, { metafields })`, `sellingPlanGroups`, `getProductStock` (guide: "Product page").
    - Header, footer, policies and info pages: `getShop`, `getMenu`, `menuLinks`, `getPolicies`, `getPolicy`, `getPage` (guide: "Header, footer, policies and pages").
    - Cart: `CartProvider` and `useCart()` from `@/lib/shopify/cart-provider` (guide: "Cart").
-   - Shopify analytics (Live View, visitor reports): `<ShopifyAnalytics shop={await getShopAnalytics()} />` in the root layout and `<ShopifyProductView>` on the product page (guide: "Shopify analytics").
+   - Shopify analytics (Live View, visitor reports): `<ShopifyAnalytics />` in the root layout and `<ShopifyProductView>` on the product page (guide: "Shopify analytics" and docs/shopify-analytics.md). Explicitly configure the current store/origins/localization with analytics-configure; run analytics-check. Product/cart reporting requires the experimental opt-in and separate dashboard proof.
    - Anything Shopify has no value for: hide it and list it (guide: "Things Shopify does not have").
 5. **Check**: while wiring, run `pnpm exec tsc --noEmit` (`next lint` no longer exists in Next 16). When the wiring is in: `pnpm shop-setup frontend-check`, then `pnpm build`, `pnpm start`, and `pnpm shop-setup frontend-check --site http://localhost:3000` (it loads the home page and one product page and needs Shopify images on both). Then click through with the development store's public token in `.env.local`.
 6. **Hand over** to `.claude/skills/shopify-store-setup/SKILL.md` for the rest of the store (`pnpm shop-setup next`).

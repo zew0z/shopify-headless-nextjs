@@ -9,7 +9,7 @@ const upstream = (calls, response = new Response("{}")) => async (url, init) => 
   return response;
 };
 const request = (headers = {}, method = "POST") =>
-  new Request("https://shop.example.com/api/unstable/graphql.json", { method, headers, body: method === "POST" ? '{"query":"{ shop { id } }"}' : undefined });
+  new Request("https://shop.example.com/api/2026-07/graphql.json", { method, headers, body: method === "POST" ? '{"query":"{ shop { id } }"}' : undefined });
 
 test("forwards to the shop's Storefront API with only the headers Shopify accepts", async () => {
   const calls = [];
@@ -23,10 +23,10 @@ test("forwards to the shop's Storefront API with only the headers Shopify accept
       authorization: "Bearer secret",
       "x-forwarded-for": "1.2.3.4, 10.0.0.1",
     }),
-    "unstable",
+    "2026-07",
     { domain: "shop.myshopify.com", fetch: upstream(calls) }
   );
-  assert.equal(calls[0].url, "https://shop.myshopify.com/api/unstable/graphql.json");
+  assert.equal(calls[0].url, "https://shop.myshopify.com/api/2026-07/graphql.json");
   assert.equal(calls[0].init.method, "POST");
   assert.deepEqual(Object.fromEntries(calls[0].init.headers.entries()), {
     "content-type": "application/json",
@@ -41,7 +41,7 @@ test("forwards to the shop's Storefront API with only the headers Shopify accept
 
 test("only Storefront API versions are passed on", async () => {
   const calls = [];
-  for (const v of ["2026-07", "unstable"]) {
+  for (const v of ["2026-07", "2026-10"]) {
     assert.notEqual((await forwardStorefrontRequest(request(), v, { domain: "s.myshopify.com", fetch: upstream(calls) })).status, 404);
   }
   for (const v of ["admin", "2026-7", "../x"]) {
@@ -59,7 +59,7 @@ test("keeps Shopify's cookies and drops headers Node's fetch has already acted o
     ["server-timing", "x"],
     ["content-type", "application/json"],
   ]);
-  const res = await forwardStorefrontRequest(request(), "unstable", { domain: "s.myshopify.com", fetch: upstream([], new Response("{}", { status: 200, headers })) });
+  const res = await forwardStorefrontRequest(request(), "2026-07", { domain: "s.myshopify.com", fetch: upstream([], new Response("{}", { status: 200, headers })) });
   assert.deepEqual(res.headers.getSetCookie(), ["_shopify_analytics=1; Path=/", "_shopify_marketing=1; Path=/"]);
   for (const h of ["content-encoding", "content-length", "server-timing"]) assert.equal(res.headers.get(h), null);
   assert.equal(res.headers.get("content-type"), "application/json");
@@ -70,7 +70,7 @@ test("Shopify unreachable is a 502, not a crash", async () => {
   const error = console.error;
   console.error = () => {};
   try {
-    const res = await forwardStorefrontRequest(request(), "unstable", { domain: "s.myshopify.com", fetch: async () => { throw new Error("down"); } });
+    const res = await forwardStorefrontRequest(request(), "2026-07", { domain: "s.myshopify.com", fetch: async () => { throw new Error("down"); } });
     assert.equal(res.status, 502);
   } finally {
     console.error = error;
@@ -78,6 +78,12 @@ test("Shopify unreachable is a 502, not a crash", async () => {
 });
 
 test("no shop configured is a 503", async () => {
-  const res = await forwardStorefrontRequest(request(), "unstable", { domain: "", fetch: upstream([]) });
+  const res = await forwardStorefrontRequest(request(), "2026-07", { domain: "", fetch: upstream([]) });
   assert.equal(res.status, 503);
+});
+
+test("unstable is reserved for bounded consent and stays disabled without analytics configuration", async () => {
+  const calls = [];
+  const res = await forwardStorefrontRequest(request(), "unstable", { domain: "s.myshopify.com", fetch: upstream(calls) });
+  assert.equal(res.status, 403); assert.equal(calls.length, 0);
 });

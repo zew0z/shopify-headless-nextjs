@@ -1,152 +1,70 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
+import { getShopifyScriptTags } from "@shopify/hydrogen";
 import { loadSdk } from "../test-support/load-sdk.mjs";
-
 const { createAnalyticsTracker } = await loadSdk("analytics-tracker");
-
-const shop = { shopId: "gid://shopify/Shop/1", currency: "EUR", acceptedLanguage: "EN" };
-const browser = () => ({
-  uniqueToken: "u",
-  visitToken: "v",
-  url: "https://shop.example.com/x",
-  path: "/x",
-  search: "",
-  referrer: "",
-  title: "T",
-  userAgent: "UA",
-  navigationType: "navigate",
-  navigationApi: "PerformanceNavigationTiming",
-});
-
-function setup({ allowed = true, banner = false } = {}) {
-  const sent = [];
-  const consent = { allowed, banner };
-  const cp = {
-    consentStatus: "loaded",
-    currentVisitorConsent: () => ({ analytics: consent.allowed ? "yes" : consent.banner ? "" : "no" }),
-    analyticsProcessingAllowed: () => consent.allowed,
-    marketingAllowed: () => false,
-    saleOfDataAllowed: () => true,
-    shouldShowBanner: () => consent.banner,
-  };
-  const t = createAnalyticsTracker({ send: async (events) => sent.push(events), privacy: () => cp, browser });
-  return { t, sent, consent, names: () => sent.map((batch) => batch.map((e) => e.payload.event_name ?? e.schema_id)) };
+const origin = "https://shop.example.com";
+const paths = ["/", "/products", "/contact", "/products/%CE%B1"];
+const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => {resolve=a;reject=b;}); return {promise,resolve,reject}; };
+const tick = () => new Promise(r => setImmediate(r));
+function fixture(over = {}) {
+  const sent = [], writes = [];
+  let choice = over.saved ?? "";
+  const privacy = { consentStatus: "loaded", currentVisitorConsent: () => ({analytics:choice}), analyticsProcessingAllowed: () => choice === "yes",
+    async setTrackingConsent(value) { writes.push(value); if (over.write) await over.write(value); choice = value.analytics ? "yes" : "no"; } };
+  const options = {origin,paths,loadPrivacy:async on => {on();return privacy;},initialize:async()=>{},loadSender:async()=>{},publish:p=>sent.push(p.url),...over};
+  const controller = createAnalyticsTracker(options);
+  return {controller,privacy,sent,writes,deny:()=>{choice="no";}};
 }
-
-const PAGE = ["trekkie_storefront_page_view/1.4", "page_rendered"];
-
-test("nothing is sent before the shop is known and consent has loaded", () => {
-  const { t, sent } = setup();
-  t.page("/x");
-  t.setShop(shop);
-  assert.equal(sent.length, 0);
-  t.ready();
-  assert.equal(sent.length, 1);
+test("pending/rejected navigation is never published or replayed; accept sends only the current page", async () => {
+  const f=fixture();f.controller.visit("/");await f.controller.boot();f.controller.visit("/products");
+  assert.equal(f.sent.length,0);await f.controller.choose(false);f.controller.visit("/contact");assert.equal(f.sent.length,0);
+  await f.controller.choose(true);assert.deepEqual(f.sent,[`${origin}/contact`]);
+  assert.deepEqual(f.writes[1],{analytics:true,marketing:false,preferences:false,sale_of_data:false});
 });
-
-test("one page view per page, sent again only after a navigation", () => {
-  const { t, names } = setup();
-  t.setShop(shop);
-  t.ready();
-  t.page("/a");
-  t.page("/a");
-  t.page("/b");
-  assert.deepEqual(names(), [PAGE, PAGE]);
+test("saved acceptance restores without writing consent; rejection stays off and settings can reopen", async()=>{
+  const a=fixture({saved:"yes"});a.controller.visit("/");await a.controller.boot();assert.deepEqual(a.sent,[`${origin}/`]);assert.equal(a.writes.length,0);
+  const b=fixture({saved:"no"});b.controller.visit("/");await b.controller.boot();assert.equal(b.sent.length,0);assert.equal(b.controller.getSnapshot().open,false);b.controller.open();assert.equal(b.controller.getSnapshot().open,true);
 });
-
-test("without consent nothing goes out; when the visitor accepts, the current page is sent once", () => {
-  const { t, sent, consent } = setup({ allowed: false });
-  t.setShop(shop);
-  t.ready();
-  t.page("/a");
-  assert.equal(sent.length, 0);
-  consent.allowed = true;
-  t.consentChanged();
-  t.consentChanged();
-  assert.equal(sent.length, 1);
+test("queries/Strict Mode repeats deduplicate, back navigation counts, Unicode paths survive", async()=>{
+  const f=fixture({saved:"yes"});await f.controller.boot();
+  for(const path of ["/?email=private","/#private","/products","/","/products/α?private"])f.controller.visit(path);
+  assert.deepEqual(f.sent,[`${origin}/`,`${origin}/products`,`${origin}/`,`${origin}/products/%CE%B1`]);
+  for(const path of ["/account/private","https://other.example/","/products/unknown"])f.controller.visit(path);
+  assert.equal(f.sent.length,4);
 });
-
-test("a shown banner holds events until the visitor chooses", () => {
-  const { t, sent, consent } = setup({ allowed: false, banner: true });
-  t.setShop(shop);
-  t.ready();
-  t.page("/a");
-  assert.equal(sent.length, 0);
-  consent.allowed = true;
-  t.consentChanged();
-  assert.equal(sent.length, 1);
+test("acceptance racing navigation waits for the sender and emits only the final page", async()=>{
+  const sender=deferred();const f=fixture({loadSender:()=>sender.promise});await f.controller.boot();f.controller.visit("/");
+  const accept=f.controller.choose(true);await tick();f.controller.visit("/products");f.controller.visit("/contact");assert.equal(f.sent.length,0);sender.resolve();await accept;assert.deepEqual(f.sent,[`${origin}/contact`]);
 });
-
-const mug = { productGid: "gid://shopify/Product/11", variantGid: "gid://shopify/ProductVariant/22", name: "Mug", variantName: "Blue", brand: "Acme", price: "12.50", quantity: 1 };
-
-test("a product view registered before its page view goes in the same batch, and the page view says product", () => {
-  const { t, sent, names } = setup();
-  t.setShop(shop);
-  t.ready();
-  t.productView("/products/mug", [mug]);
-  t.page("/products/mug");
-  assert.deepEqual(names(), [["product_page_rendered", ...PAGE]]);
-  assert.equal(sent[0][1].payload.pageType, "product");
-  assert.equal(sent[0][1].payload.resourceId, 11);
+test("withdrawal stops synchronously, including during an inflight acceptance, and the last durable write rejects",async()=>{
+  const write=deferred();const f=fixture({write:v=>v.analytics?write.promise:Promise.resolve()});await f.controller.boot();f.controller.visit("/");
+  const accept=f.controller.choose(true);await tick();const reject=f.controller.choose(false);f.controller.visit("/contact");assert.equal(f.controller.canTrack(),false);
+  write.resolve();await Promise.all([accept,reject]);assert.equal(f.sent.length,0);assert.equal(f.privacy.currentVisitorConsent().analytics,"no");assert.equal(f.controller.getSnapshot().choice,"rejected");
 });
-
-test("a product view after its page was sent goes alone", () => {
-  const { t, names } = setup();
-  t.setShop(shop);
-  t.ready();
-  t.page("/products/mug");
-  t.productView("/products/mug", [mug]);
-  assert.deepEqual(names(), [PAGE, ["product_page_rendered"]]);
+test("failed withdrawal stays stopped, and external withdrawal disables an active sender",async()=>{
+  const f=fixture({saved:"yes",write:async()=>{throw Error("offline");}});f.controller.visit("/");await f.controller.boot();
+  const reject=f.controller.choose(false);assert.equal(f.controller.canTrack(),false);f.controller.visit("/contact");await reject;assert.equal(f.sent.length,1);assert.equal(f.controller.getSnapshot().failed,true);
+  const g=fixture({saved:"yes"});await g.controller.boot();g.deny();g.controller.syncPrivacy();g.controller.visit("/");assert.equal(g.sent.length,0);
 });
-
-test("a product view for another page waits for that page", () => {
-  const { t, names } = setup();
-  t.setShop(shop);
-  t.ready();
-  t.page("/");
-  t.productView("/products/mug", [mug]);
-  assert.deepEqual(names(), [PAGE]);
+test("blocked consent, blocked sender, and thrown publication fail closed without stopping navigation",async()=>{
+  for(const over of [{loadPrivacy:async()=>{throw Error();}},{saved:"yes",loadSender:async()=>{throw Error();}},{saved:"yes",publish:()=>{throw Error();}}]) {
+    const f=fixture(over);f.controller.visit("/");await f.controller.boot();f.controller.visit("/contact");assert.equal(f.sent.length,0);assert.equal(f.controller.canTrack(),false);assert.equal(f.controller.getSnapshot().failed,true);
+  }
 });
-
-test("add to cart reports the added variant from Shopify's cart, with the added quantity", () => {
-  const { t, sent } = setup();
-  t.setShop(shop);
-  t.ready();
-  const cart = {
-    id: "gid://shopify/Cart/c1?key=k",
-    lines: {
-      edges: [
-        {
-          node: {
-            id: "l1",
-            quantity: 3,
-            merchandise: {
-              id: "gid://shopify/ProductVariant/22",
-              title: "Blue",
-              sku: "MUG-B",
-              price: { amount: "12.5", currencyCode: "EUR" },
-              product: { id: "gid://shopify/Product/11", title: "Mug", vendor: "Acme", productType: "Kitchen" },
-            },
-          },
-        },
-      ],
-    },
-  };
-  t.addToCart(cart, [{ merchandiseId: "gid://shopify/ProductVariant/22", quantity: 2 }, { merchandiseId: "gid://shopify/ProductVariant/missing", quantity: 1 }]);
-  assert.equal(sent.length, 1);
-  const event = sent[0][0].payload;
-  assert.equal(event.event_name, "product_added_to_cart");
-  assert.equal(event.cart_token, "c1?key=k");
-  assert.deepEqual(
-    event.products.map((s) => JSON.parse(s)),
-    [{ product_gid: "gid://shopify/Product/11", name: "Mug", variant: "Blue", brand: "Acme", price: 12.5, quantity: 2, variant_gid: "gid://shopify/ProductVariant/22", category: "Kitchen", sku: "MUG-B", product_id: 11, variant_id: 22 }]
-  );
+test("boot is singleton and disable prevents saved acceptance from activating after a race",async()=>{
+  const sender=deferred();let calls=0;const f=fixture({saved:"yes",loadSender:()=>{calls++;return sender.promise;}});
+  const a=f.controller.boot(),b=f.controller.boot();assert.equal(a,b);await tick();f.controller.disable();sender.resolve();await a;assert.equal(calls,1);f.controller.visit("/");await f.controller.choose(true);assert.equal(f.sent.length,0);
 });
-
-test("add to cart without consent sends nothing", () => {
-  const { t, sent } = setup({ allowed: false });
-  t.setShop(shop);
-  t.ready();
-  t.addToCart({ id: "gid://shopify/Cart/c1", lines: { edges: [] } }, [{ merchandiseId: "x", quantity: 1 }]);
-  assert.equal(sent.length, 0);
+test("the real pinned Headless bus receives no rejected history or duplicate replay after reacceptance",async()=>{
+  const f=fixture();const document=new EventTarget();const window={location:{href:origin},Shopify:{customerPrivacy:f.privacy}};
+  const tags=getShopifyScriptTags({shop:{shopId:"1",storefrontId:"0",myshopifyDomain:"fixture.myshopify.com"},analytics:{channel:"headless"},consent:{mode:"custom-banner",setup:async()=>{}},shopifyAnalytics:false});
+  vm.runInNewContext(tags.scripts.find(s=>s.attributes?.id==="shopify-analytics-bus").innerHTML,{window,document,console});
+  const received=[];const bus=window.Shopify.analytics;
+  assert.deepEqual(JSON.parse(JSON.stringify(bus.getConfig().shop)),{shopId:"gid://shopify/Shop/1",channel:"headless"});
+  bus.addDestination({name:"mock",setup({subscribe}){subscribe("page_viewed",p=>received.push(p.url));}});
+  const t=createAnalyticsTracker({origin,paths,loadPrivacy:async on=>{on();return f.privacy;},initialize:async()=>{bus[Symbol.for("shopify.hydrogen.custom-consent")](async()=>{});await tick();},loadSender:async()=>{},publish:p=>bus.publish("page_viewed",p)});
+  t.visit("/");await t.boot();t.visit("/products");await t.choose(true);assert.deepEqual(received,[`${origin}/products`]);
+  await t.choose(false);document.dispatchEvent(new Event("visitorConsentCollected"));t.visit("/contact");await t.choose(true);document.dispatchEvent(new Event("visitorConsentCollected"));assert.deepEqual(received,[`${origin}/products`,`${origin}/contact`]);
 });

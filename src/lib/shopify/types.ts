@@ -335,6 +335,8 @@ export interface CartBuyerIdentity {
 
 export interface Cart {
   id: string;
+  /** Selected by the kit; older custom cart queries must add it for optional analytics deduplication. */
+  updatedAt?: string;
   checkoutUrl: string;
   totalQuantity: number;
   cost: CartCost;

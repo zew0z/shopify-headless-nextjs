@@ -16,7 +16,7 @@ const api = (over = {}) => ({
   consentStatus: "loaded",
   calls: [],
   setTrackingConsent(c, cb) { this.calls.push(c); cb?.(); },
-  currentVisitorConsent: () => ({ marketing: "", analytics: "", preferences: "", sale_of_data: "" }),
+  currentVisitorConsent: () => ({ marketing: "", analytics: "yes", preferences: "", sale_of_data: "" }),
   analyticsProcessingAllowed: () => true,
   marketingAllowed: () => false,
   saleOfDataAllowed: () => true,
@@ -96,16 +96,17 @@ test("with the banner, ready waits for the banner too", () => {
   assert.deepEqual(seen, ["ready"]);
 });
 
-test("analytics are allowed only once consent is loaded and not refused", () => {
+test("analytics require an explicit saved yes even in regions that allow processing without a banner", () => {
   assert.equal(p.analyticsAllowed(null), false);
   assert.equal(p.analyticsAllowed(api({ consentStatus: "loading" })), false);
   assert.equal(p.analyticsAllowed(api()), true);
+  assert.equal(p.analyticsAllowed(api({ currentVisitorConsent: () => ({ analytics: "" }) })), false);
   assert.equal(p.analyticsAllowed(api({ currentVisitorConsent: () => ({ analytics: "no" }) })), false);
   assert.equal(p.analyticsAllowed(api({ analyticsProcessingAllowed: () => false })), false);
 });
 
 test("a shown banner with no choice yet means wait", () => {
-  assert.equal(p.waitingForChoice(api({ shouldShowBanner: () => true })), true);
+  assert.equal(p.waitingForChoice(api({ shouldShowBanner: () => true, currentVisitorConsent: () => ({ analytics: "" }) })), true);
   assert.equal(p.waitingForChoice(api({ shouldShowBanner: () => true, currentVisitorConsent: () => ({ analytics: "yes" }) })), false);
   assert.equal(p.waitingForChoice(api()), false);
 });

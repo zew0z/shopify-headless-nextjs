@@ -6,6 +6,8 @@
  * visitors. The route is app/api/[version]/graphql.json/route.ts. Server-only.
  */
 import { shopifyConfig } from "./config";
+import { readAnalyticsConfig } from "./analytics-config";
+import { proxyAnalyticsConsent } from "./analytics-consent-proxy";
 
 const VERSION = /^(unstable|2\d{3}-\d{2})$/;
 
@@ -35,6 +37,7 @@ export async function forwardStorefrontRequest(
   version: string,
   options: { domain?: string; fetch?: typeof fetch } = {}
 ): Promise<Response> {
+  if (version === "unstable") return proxyAnalyticsConsent(request, readAnalyticsConfig().config, options.fetch);
   if (!VERSION.test(version)) return new Response("Not found", { status: 404 });
   const domain = options.domain ?? shopifyConfig.domain;
   if (!domain) return Response.json({ errors: [{ message: "Shopify is not configured" }] }, { status: 503 });

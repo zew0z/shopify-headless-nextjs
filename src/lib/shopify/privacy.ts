@@ -85,7 +85,7 @@ export function privacyBanner(win: ShopifyWindow = browserWindow()): PrivacyBann
 export function analyticsAllowed(cp: CustomerPrivacy | null): boolean {
   try {
     if (!cp || cp.consentStatus !== "loaded") return false;
-    if (cp.currentVisitorConsent?.().analytics === "no") return false;
+    if (cp.currentVisitorConsent?.().analytics !== "yes") return false;
     return cp.analyticsProcessingAllowed?.() ?? false;
   } catch {
     return false;

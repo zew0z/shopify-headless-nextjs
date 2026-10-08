@@ -110,3 +110,12 @@ test("an existing error page is never overwritten", () => {
   assert.equal(read(target, "app/error.tsx"), "mine");
   assert.equal(read(target, "app/global-error.tsx"), "mine too");
 });
+
+test("both installed layouts include the pinned runtime dependency and are idempotent",()=>{
+  for(const appRoot of ["","src/"]){
+    const target=received(appRoot?{"src/app/page.tsx":""}:{});applyKitInstall(planKitInstall({kitRoot,target,appRoot}),target,notes);
+    assert.equal(JSON.parse(read(target,"package.json")).dependencies["@shopify/hydrogen"],"2026.10.0-preview.4");
+    assert.ok(existsSync(path.join(target,`${appRoot}app/api/shopify/analytics/config/route.ts`)));assert.ok(existsSync(path.join(target,`${appRoot}lib/shopify/analytics-browser.ts`)));
+    assert.equal(applyKitInstall(planKitInstall({kitRoot,target,appRoot}),target,notes).changed,0);
+  }
+});

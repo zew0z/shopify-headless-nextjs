@@ -4,7 +4,7 @@ import { findSdkDir } from "../shopify/sdk-dir.mjs";
 import { ERROR_PAGE, GLOBAL_ERROR_PAGE } from "./templates.mjs";
 
 // Paths under app/api/. "[version]/graphql.json" is the Storefront API proxy Shopify's privacy script needs.
-const ROUTES = ["cart", "revalidate", "health", "search", "[version]/graphql.json"];
+const ROUTES = ["cart", "revalidate", "health", "search", "[version]/graphql.json", "shopify/analytics/config"];
 const COPIED_AS_IS = [
   "playwright.config.mjs",
   "store-setup.config.example.json",
@@ -13,8 +13,10 @@ const COPIED_AS_IS = [
   "docs/catalogue-import.md",
   "docs/shopify-api-gotchas.md",
   "docs/frontend-wiring.md",
+  "docs/shopify-analytics.md",
 ];
 const SCRIPTS = ["shop-setup", "test:scripts", "test:e2e"];
+const RUNTIME_TOOLS = ["@shopify/hydrogen"];
 const DEV_TOOLS = ["@playwright/test", "typescript"];
 // `!.env.example` follows `.env*` so a committed example file is not hidden by it.
 const GITIGNORE = [".env*", "!.env.example", "/data/catalog.json", "/test-results/", "/playwright-report/", "frontend-audit.json"];
@@ -74,13 +76,19 @@ export function planKitInstall({ kitRoot, target, appRoot }) {
 
   const kitPkg = readJson(path.join(kitRoot, "package.json"));
   const pkg = readJson(path.join(target, "package.json"));
-  const add = { scripts: {}, devDependencies: {} };
+  const add = { scripts: {}, dependencies: {}, devDependencies: {} };
   const pkgConflicts = [];
   for (const key of SCRIPTS) {
     const want = kitPkg.scripts[key];
     const have = pkg.scripts?.[key];
     if (have === undefined) add.scripts[key] = want;
     else if (have !== want) pkgConflicts.push({ key: `scripts.${key}`, have, want });
+  }
+  for (const name of RUNTIME_TOOLS) {
+    const want = kitPkg.dependencies[name];
+    const have = pkg.dependencies?.[name] ?? pkg.devDependencies?.[name];
+    if (have === undefined) add.dependencies[name] = want;
+    else if (have !== want || !pkg.dependencies?.[name]) pkgConflicts.push({ key: `dependencies.${name}`, have, want });
   }
   const installed = { ...pkg.dependencies, ...pkg.devDependencies };
   for (const name of DEV_TOOLS) if (!installed[name]) add.devDependencies[name] = kitPkg.devDependencies[name];
