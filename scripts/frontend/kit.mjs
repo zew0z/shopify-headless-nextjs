@@ -3,7 +3,8 @@ import path from "node:path";
 import { findSdkDir } from "../shopify/sdk-dir.mjs";
 import { ERROR_PAGE, GLOBAL_ERROR_PAGE } from "./templates.mjs";
 
-const ROUTES = ["cart", "revalidate", "health", "search"];
+// Paths under app/api/. "[version]/graphql.json" is the Storefront API proxy Shopify's privacy script needs.
+const ROUTES = ["cart", "revalidate", "health", "search", "[version]/graphql.json"];
 const COPIED_AS_IS = [
   "playwright.config.mjs",
   "store-setup.config.example.json",
@@ -48,7 +49,8 @@ export function kitFiles(kitRoot, appRoot) {
   const routes = ROUTES.map((r) => ({
     from: `${kitPrefix}app/api/${r}/route.ts`,
     to: `${appRoot}app/api/${r}/route.ts`,
-    transform: (text) => text.replaceAll('"@/lib/shopify', '"../../../lib/shopify'),
+    // From app/api/<r>/route.ts back up to the app root: two for app/api, one per part of <r>.
+    transform: (text) => text.replaceAll('"@/lib/shopify', `"${"../".repeat(2 + r.split("/").length)}lib/shopify`),
   }));
   const tooling = [...filesUnder(kitRoot, "scripts"), ...filesUnder(kitRoot, "e2e"), ...COPIED_AS_IS]
     .filter((f) => existsSync(path.join(kitRoot, f)))

@@ -29,6 +29,15 @@ test("a root-layout repo gets the SDK in lib/shopify and routes that need no @/ 
   }
 });
 
+test("the Storefront API proxy route is installed with its import pointing four levels up", () => {
+  for (const appRoot of ["", "src/"]) {
+    const plan = planKitInstall({ kitRoot, target: received(appRoot ? { "src/app/page.tsx": "" } : {}), appRoot });
+    const route = plan.write.find((w) => w.to === `${appRoot}app/api/[version]/graphql.json/route.ts`);
+    assert.ok(route, "proxy route missing");
+    assert.match(route.text, /"\.\.\/\.\.\/\.\.\/\.\.\/lib\/shopify\/storefront-proxy"/);
+  }
+});
+
 test("a src/ repo gets everything under src/", () => {
   const plan = planKitInstall({ kitRoot, target: received({ "src/app/page.tsx": "" }), appRoot: "src/" });
   const to = plan.write.map((w) => w.to);
