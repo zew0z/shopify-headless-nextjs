@@ -1,0 +1,232 @@
+{
+  "source": "@shopify/hydrogen-react 2026.4.4 sendShopifyAnalytics",
+  "volatile": [
+    "event_time",
+    "event_id",
+    "microSessionId",
+    "event_created_at_ms"
+  ],
+  "cases": {
+    "pageView": {
+      "input": {
+        "hasUserConsent": true,
+        "shopId": "gid://shopify/Shop/55555",
+        "currency": "EUR",
+        "acceptedLanguage": "EL",
+        "shopifySalesChannel": "headless",
+        "assetVersionId": "kit-1",
+        "uniqueToken": "uniq-1",
+        "visitToken": "visit-1",
+        "url": "https://shop.example.com/products/mug?x=1",
+        "path": "/products/mug",
+        "search": "?x=1",
+        "referrer": "https://google.com/",
+        "title": "Mug",
+        "userAgent": "UA/1",
+        "navigationType": "navigate",
+        "navigationApi": "PerformanceNavigationTiming",
+        "analyticsAllowed": true,
+        "marketingAllowed": false,
+        "saleOfDataAllowed": true,
+        "ccpaEnforced": false,
+        "gdprEnforced": true
+      },
+      "url": "https://monorail-edge.shopifysvc.com/unstable/produce_batch",
+      "events": [
+        {
+          "schema_id": "trekkie_storefront_page_view/1.4",
+          "payload": {
+            "appClientId": "12875497473",
+            "isMerchantRequest": false,
+            "hydrogenSubchannelId": "0",
+            "isPersistentCookie": true,
+            "uniqToken": "uniq-1",
+            "visitToken": "visit-1",
+            "microSessionCount": 1,
+            "url": "https://shop.example.com/products/mug?x=1",
+            "path": "/products/mug",
+            "search": "?x=1",
+            "referrer": "https://google.com/",
+            "title": "Mug",
+            "shopId": 55555,
+            "currency": "EUR",
+            "contentLanguage": "EL"
+          },
+          "metadata": {}
+        },
+        {
+          "schema_id": "custom_storefront_customer_tracking/1.2",
+          "payload": {
+            "source": "headless",
+            "asset_version_id": "kit-1",
+            "hydrogenSubchannelId": "0",
+            "is_persistent_cookie": true,
+            "deprecated_visit_token": "visit-1",
+            "unique_token": "uniq-1",
+            "event_source_url": "https://shop.example.com/products/mug?x=1",
+            "referrer": "https://google.com/",
+            "user_agent": "UA/1",
+            "navigation_type": "navigate",
+            "navigation_api": "PerformanceNavigationTiming",
+            "shop_id": 55555,
+            "currency": "EUR",
+            "ccpa_enforced": false,
+            "gdpr_enforced": true,
+            "gdpr_enforced_as_string": "true",
+            "analytics_allowed": true,
+            "marketing_allowed": false,
+            "sale_of_data_allowed": true,
+            "event_name": "page_rendered",
+            "canonical_url": "https://shop.example.com/products/mug?x=1"
+          },
+          "metadata": {}
+        }
+      ]
+    },
+    "productView": {
+      "input": {
+        "hasUserConsent": true,
+        "shopId": "gid://shopify/Shop/55555",
+        "currency": "EUR",
+        "acceptedLanguage": "EL",
+        "shopifySalesChannel": "headless",
+        "assetVersionId": "kit-1",
+        "uniqueToken": "uniq-1",
+        "visitToken": "visit-1",
+        "url": "https://shop.example.com/products/mug?x=1",
+        "path": "/products/mug",
+        "search": "?x=1",
+        "referrer": "https://google.com/",
+        "title": "Mug",
+        "userAgent": "UA/1",
+        "navigationType": "navigate",
+        "navigationApi": "PerformanceNavigationTiming",
+        "analyticsAllowed": true,
+        "marketingAllowed": false,
+        "saleOfDataAllowed": true,
+        "ccpaEnforced": false,
+        "gdprEnforced": true,
+        "pageType": "product",
+        "resourceId": "gid://shopify/Product/11",
+        "products": [
+          {
+            "productGid": "gid://shopify/Product/11",
+            "variantGid": "gid://shopify/ProductVariant/22",
+            "name": "Mug",
+            "variantName": "Blue",
+            "brand": "Acme",
+            "category": "Kitchen",
+            "price": "12.50",
+            "sku": "MUG-B",
+            "quantity": 2
+          }
+        ]
+      },
+      "url": "https://monorail-edge.shopifysvc.com/unstable/produce_batch",
+      "events": [
+        {
+          "schema_id": "custom_storefront_customer_tracking/1.2",
+          "payload": {
+            "source": "headless",
+            "asset_version_id": "kit-1",
+            "hydrogenSubchannelId": "0",
+            "is_persistent_cookie": true,
+            "deprecated_visit_token": "visit-1",
+            "unique_token": "uniq-1",
+            "event_source_url": "https://shop.example.com/products/mug?x=1",
+            "referrer": "https://google.com/",
+            "user_agent": "UA/1",
+            "navigation_type": "navigate",
+            "navigation_api": "PerformanceNavigationTiming",
+            "shop_id": 55555,
+            "currency": "EUR",
+            "ccpa_enforced": false,
+            "gdpr_enforced": true,
+            "gdpr_enforced_as_string": "true",
+            "analytics_allowed": true,
+            "marketing_allowed": false,
+            "sale_of_data_allowed": true,
+            "event_name": "product_page_rendered",
+            "canonical_url": "https://shop.example.com/products/mug?x=1",
+            "products": [
+              "{\"product_gid\":\"gid://shopify/Product/11\",\"name\":\"Mug\",\"variant\":\"Blue\",\"brand\":\"Acme\",\"price\":12.5,\"quantity\":2,\"variant_gid\":\"gid://shopify/ProductVariant/22\",\"category\":\"Kitchen\",\"sku\":\"MUG-B\",\"product_id\":11,\"variant_id\":22}"
+            ]
+          },
+          "metadata": {}
+        }
+      ]
+    },
+    "addToCart": {
+      "input": {
+        "hasUserConsent": true,
+        "shopId": "gid://shopify/Shop/55555",
+        "currency": "EUR",
+        "acceptedLanguage": "EL",
+        "shopifySalesChannel": "headless",
+        "assetVersionId": "kit-1",
+        "uniqueToken": "uniq-1",
+        "visitToken": "visit-1",
+        "url": "https://shop.example.com/products/mug?x=1",
+        "path": "/products/mug",
+        "search": "?x=1",
+        "referrer": "https://google.com/",
+        "title": "Mug",
+        "userAgent": "UA/1",
+        "navigationType": "navigate",
+        "navigationApi": "PerformanceNavigationTiming",
+        "analyticsAllowed": true,
+        "marketingAllowed": false,
+        "saleOfDataAllowed": true,
+        "ccpaEnforced": false,
+        "gdprEnforced": true,
+        "cartId": "gid://shopify/Cart/abc123?key=k",
+        "products": [
+          {
+            "productGid": "gid://shopify/Product/11",
+            "variantGid": "gid://shopify/ProductVariant/22",
+            "name": "Mug",
+            "variantName": "Blue",
+            "brand": "Acme",
+            "category": "Kitchen",
+            "price": "12.50",
+            "sku": "MUG-B",
+            "quantity": 2
+          }
+        ]
+      },
+      "url": "https://monorail-edge.shopifysvc.com/unstable/produce_batch",
+      "events": [
+        {
+          "schema_id": "custom_storefront_customer_tracking/1.2",
+          "payload": {
+            "source": "headless",
+            "asset_version_id": "kit-1",
+            "hydrogenSubchannelId": "0",
+            "is_persistent_cookie": true,
+            "deprecated_visit_token": "visit-1",
+            "unique_token": "uniq-1",
+            "event_source_url": "https://shop.example.com/products/mug?x=1",
+            "referrer": "https://google.com/",
+            "user_agent": "UA/1",
+            "navigation_type": "navigate",
+            "navigation_api": "PerformanceNavigationTiming",
+            "shop_id": 55555,
+            "currency": "EUR",
+            "ccpa_enforced": false,
+            "gdpr_enforced": true,
+            "gdpr_enforced_as_string": "true",
+            "analytics_allowed": true,
+            "marketing_allowed": false,
+            "sale_of_data_allowed": true,
+            "event_name": "product_added_to_cart",
+            "cart_token": "abc123?key=k",
+            "products": [
+              "{\"product_gid\":\"gid://shopify/Product/11\",\"name\":\"Mug\",\"variant\":\"Blue\",\"brand\":\"Acme\",\"price\":12.5,\"quantity\":2,\"variant_gid\":\"gid://shopify/ProductVariant/22\",\"category\":\"Kitchen\",\"sku\":\"MUG-B\",\"product_id\":11,\"variant_id\":22}"
+            ]
+          },
+          "metadata": {}
+        }
+      ]
+    }
+  }
+}
