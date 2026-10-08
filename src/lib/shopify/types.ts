@@ -280,11 +280,14 @@ export interface CartLineMerchandise {
   title: string;
   selectedOptions: SelectedOption[];
   price: Money;
+  sku?: string | null;
   product: {
     id: string;
     handle: string;
     title: string;
     featuredImage: ShopifyImage | null;
+    vendor?: string;
+    productType?: string;
   };
 }
 
