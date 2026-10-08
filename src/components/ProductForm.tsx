@@ -5,6 +5,7 @@ import { Product, ProductVariant } from "@/lib/shopify/types";
 import { useCart } from "@/context/cart-context";
 import { ShoppingBag, Check } from "lucide-react";
 import { formatMoney } from "@/lib/shopify/money";
+import { ShopifyProductView } from "@/lib/shopify/analytics";
 
 interface ProductFormProps {
   product: Product;
@@ -60,6 +61,8 @@ export function ProductForm({ product }: ProductFormProps) {
 
   return (
     <div className="space-y-6">
+      <ShopifyProductView product={product} variant={selectedVariant.id ? selectedVariant : null} />
+
       {/* Price Display */}
       <div className="flex items-baseline gap-3">
         <span className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">

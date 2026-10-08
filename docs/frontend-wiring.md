@@ -229,6 +229,38 @@ export async function addToCart(variantId: string, quantity = 1) {
 
 Every add needs a **variant id** (`gid://shopify/ProductVariant/...`). A product with one variant: use `variants.edges[0].node.id`. Several variants (size, colour): use their picker if the design has one, and find the variant whose `selectedOptions` match the picked values. No picker in the design: ask the owner before adding one.
 
+## Shopify analytics (Live View)
+
+A headless site sends Shopify nothing on its own, so the shop's Live View and visitor reports stay empty. The kit sends what Hydrogen sends: a page view on every navigation, product views and add to cart. It sends nothing until the visitor consents.
+
+1. **Root layout** (a server component):
+
+   ```tsx
+   import { getShopAnalytics } from "@/lib/shopify";
+   import { ShopifyAnalytics } from "@/lib/shopify/analytics";
+
+   export default async function RootLayout({ children }) {
+     const shopAnalytics = await getShopAnalytics(); // null (with a console error) when it cannot work; never throws
+     return (
+       <html><body>
+         {children}
+         <ShopifyAnalytics shop={shopAnalytics} />
+       </body></html>
+     );
+   }
+   ```
+
+2. **Product page**: wherever the selected variant lives (usually their client product form), render `<ShopifyProductView product={product} variant={selectedVariant} />`. It renders nothing.
+3. **Cart**: the kit's `CartProvider` reports adds itself. If the site keeps a cart of its own, call `trackAddToCart(cart, lines)` from `@/lib/shopify/analytics` with Shopify's cart after each successful add.
+4. **Keep the route `app/api/[version]/graphql.json/route.ts`** (kit-install adds it). Shopify's privacy script asks for the visitor's consent and ids through the site's own domain; without the route no visitor is counted. If the frontend already has a dynamic folder directly under `app/api/` (like `app/api/[slug]`), Next refuses two different names at that level: ask before renaming theirs.
+5. **Consent**: `<ShopifyAnalytics>` loads Shopify's own cookie banner, which the owner turns on in the admin (Settings > Customer privacy > Cookie banner). If the design has its own banner, pass `withPrivacyBanner={false}` and have their banner call `window.Shopify.customerPrivacy.setTrackingConsent({ analytics, marketing, preferences, sale_of_data }, callback)`. The kit adds the headless settings to that call.
+6. **Content security policy**, if the site has one: allow scripts from `https://cdn.shopify.com` and connections to `https://monorail-edge.shopifysvc.com`.
+7. **Checkout domain**: `getShopAnalytics` takes it from the shop's primary domain, which the store setup makes `checkout.<siteDomain>`. The site and checkout must share that domain for Shopify to link the visit to the order.
+
+**What counts as verified.** Visits from `localhost` are marked as the shop owner's own, so they cannot be expected in Live View. Locally you can check only the plumbing: the script from `cdn.shopify.com` loads, `POST /api/unstable/graphql.json` answers 200, and after you accept cookies the browser sends to `monorail-edge.shopifysvc.com`. Live View itself is checked on the deployed site (setup step `live-view`). Say "unverified" until then.
+
+**When Shopify changes its format.** `src/lib/shopify/analytics-events.ts` copies the event code of `@shopify/hydrogen-react` (version in `ANALYTICS_FORMAT_VERSION`), and `scripts/shopify/analytics-events.test.mjs` compares its output with `scripts/shopify/fixtures/monorail-hydrogen-react.json`. To move to a newer version: in a scratch folder, `pnpm add @shopify/hydrogen-react@<version>`, call its `sendShopifyAnalytics` with the fixture's `input` for each case (with `globalThis.fetch` stubbed to capture the body), save the events with the `volatile` keys removed as the new fixture, then change `analytics-events.ts` until the test passes.
+
 ## Things Shopify does not have
 
 "Hide it and list it" is the rule: hide that bit of UI, add it to the list you give the owner, and ask where it should come from.

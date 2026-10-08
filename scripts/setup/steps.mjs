@@ -266,7 +266,15 @@ export const STEPS = [
     owner: "code",
     needs: ["intake", "checkout-domain"],
     instructions:
-      "Follow-on plan. The agent adds a consent banner to the frontend and passes the choice with Shopify's Customer Privacy API: window.Shopify.customerPrivacy.setTrackingConsent with headlessStorefront true, checkoutRootDomain, storefrontRootDomain and the public Storefront token, and allows Shopify's script host in the content security policy (shopify.dev/docs/api/customer-privacy). No analytics may fire before consent.",
+      `The kit ships Shopify's consent and analytics (docs/frontend-wiring.md, "Shopify analytics"). The agent puts <ShopifyAnalytics shop={await getShopAnalytics()} /> in the root layout and <ShopifyProductView> on the product page, keeps the route app/api/[version]/graphql.json, and in any content security policy allows scripts from cdn.shopify.com and connections to monorail-edge.shopifysvc.com. The owner turns on Shopify's cookie banner: Settings > Customer privacy > Cookie banner. Nothing is sent to Shopify before the visitor consents. ${FALLBACK}`,
+  },
+  {
+    id: "live-view",
+    title: "See a real visit in Shopify's Live View",
+    owner: "human",
+    needs: ["hosting", "cookie-consent"],
+    instructions:
+      "Open the deployed site (not localhost: Shopify marks visits from localhost as the owner's own) in a private window, accept cookies in the banner, open a product and add it to the cart. Within a few minutes Shopify admin > Analytics > Live View shows the visitor, and the sessions report shows the visit later that day. If nothing shows: check that /api/unstable/graphql.json on the site answers, that checkout is on checkout.<siteDomain>, and the browser console for [Shopify analytics] messages.",
   },
   {
     id: "seo",
@@ -341,7 +349,7 @@ export const STEPS = [
     id: "go-live",
     title: "Final check before telling anyone the shop is ready",
     owner: "human",
-    needs: ["sdk-queries", "test-order", "rotate-secrets", "legal-details", "withdrawal-button", "cookie-consent", "hosting", "catalogue", "inventory", "courier", "cod-payment", "eu-vat", "customer-accounts", "staff-alerts", "languages", "search-console", "policies-approve"],
+    needs: ["sdk-queries", "test-order", "rotate-secrets", "legal-details", "withdrawal-button", "cookie-consent", "hosting", "catalogue", "inventory", "courier", "cod-payment", "eu-vat", "customer-accounts", "staff-alerts", "languages", "search-console", "live-view", "policies-approve"],
     instructions:
       "Run pnpm shop-setup status: every step must be done, or marked done with an n/a reason. Read the list of n/a reasons back to the owner. Only then say the shop is ready.",
   },

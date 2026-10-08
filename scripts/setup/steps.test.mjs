@@ -62,6 +62,16 @@ test("go-live transitively waits for everything a shop needs", () => {
   for (const id of needed) assert.ok(seen.has(id), `go-live must wait for ${id}`);
 });
 
+test("analytics: the kit's component and Shopify's banner, then a real visit seen in Live View before go-live", () => {
+  assert.match(byId["cookie-consent"].instructions, /ShopifyAnalytics/);
+  assert.match(byId["cookie-consent"].instructions, /Customer privacy/);
+  assert.equal(byId["live-view"].owner, "human");
+  assert.ok(byId["live-view"].needs.includes("hosting"));
+  assert.ok(byId["live-view"].needs.includes("cookie-consent"));
+  assert.match(byId["live-view"].instructions, /localhost/);
+  assert.ok(byId["go-live"].needs.includes("live-view"));
+});
+
 test("webhooks and the browser run need a deployed site", () => {
   assert.ok(byId.webhooks.needs.includes("hosting"));
   assert.ok(byId.e2e.needs.includes("hosting"));

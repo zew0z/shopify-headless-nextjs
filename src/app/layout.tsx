@@ -5,6 +5,8 @@ import { CartProvider } from "@/context/cart-context";
 import { Header } from "@/components/Header";
 import { CartDrawer } from "@/components/CartDrawer";
 import { Footer } from "@/components/Footer";
+import { getShopAnalytics } from "@/lib/shopify";
+import { ShopifyAnalytics } from "@/lib/shopify/analytics";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,11 +23,12 @@ export const metadata: Metadata = {
   description: "Ultra-fast headless e-commerce experience powered by Shopify Storefront API and Next.js 16",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const shopAnalytics = await getShopAnalytics();
   return (
     <html
       lang="en"
@@ -38,6 +41,7 @@ export default function RootLayout({
           <CartDrawer />
           <Footer />
         </CartProvider>
+        <ShopifyAnalytics shop={shopAnalytics} />
       </body>
     </html>
   );

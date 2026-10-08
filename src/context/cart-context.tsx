@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Cart, ProductVariant, Product } from "@/lib/shopify/types";
 import { cartAction, isShopifyCartId } from "@/lib/shopify/cart-client";
+import { trackAddToCart } from "@/lib/shopify/analytics";
 
 interface CartContextType {
   cart: Cart | null;
@@ -48,8 +49,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       .catch((err) => console.warn("Could not load the Shopify cart", err));
   }, []);
 
-  /** Runs one cart action. On failure the bag stays as it was and the error is shown. */
-  const run = async (body: Record<string, unknown>) => {
+  /** Runs one cart action and returns Shopify's cart. On failure the bag stays as it was, the error is shown and it returns null. */
+  const run = async (body: Record<string, unknown>): Promise<Cart | null> => {
     setIsLoading(true);
     setError(null);
     try {
@@ -57,8 +58,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!next) throw new Error(NOT_CONNECTED);
       setCart(next);
       localStorage.setItem(CART_ID_KEY, next.id);
+      return next;
     } catch (err) {
       setError(err instanceof Error ? err.message : "The bag could not be updated.");
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -71,7 +74,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setIsOpen(true);
     const lines = [{ merchandiseId: variant.id, quantity }];
     const cartId = cart?.id ?? localStorage.getItem(CART_ID_KEY);
-    await run(isShopifyCartId(cartId) ? { action: "add", cartId, lines } : { action: "create", lines });
+    const next = await run(isShopifyCartId(cartId) ? { action: "add", cartId, lines } : { action: "create", lines });
+    if (next) trackAddToCart(next, lines);
   };
 
   const removeItem = async (lineId: string) => {
