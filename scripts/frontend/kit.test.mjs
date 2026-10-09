@@ -165,3 +165,15 @@ test("npm repos get npm ci; existing deploy files and a standalone config are le
   assert.equal(plan.extras.some((e) => e.to === "Dockerfile" || e.to.startsWith(".github/")), false);
   assert.equal(plan.deployNote, null);
 });
+
+test("the image build runs lint only when the repo has a lint script", () => {
+  const pnpm = makeFixture({ "package.json": { name: "shop" }, "pnpm-lock.yaml": "" });
+  assert.match(planKitInstall({ kitRoot, target: pnpm, appRoot: "" }).extras.find((e) => e.to === "Dockerfile").text, /pnpm run --if-present lint/);
+  const npm = makeFixture({ "package.json": { name: "shop" }, "package-lock.json": "{}" });
+  assert.match(planKitInstall({ kitRoot, target: npm, appRoot: "" }).extras.find((e) => e.to === "Dockerfile").text, /npm run --if-present lint/);
+});
+
+test("no standalone note when the repo has its own Dockerfile", () => {
+  const own = makeFixture({ "package.json": { name: "shop" }, Dockerfile: "FROM x\n", "next.config.ts": "export default {};\n" });
+  assert.equal(planKitInstall({ kitRoot, target: own, appRoot: "" }).deployNote, null);
+});

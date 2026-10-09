@@ -45,6 +45,8 @@ export function dockerfile(pm) {
     ? "COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./\nRUN corepack enable && pnpm install --frozen-lockfile"
     : "COPY package*.json ./\nRUN npm ci --no-audit --fund=false";
   const run = pm === "pnpm" ? "pnpm" : "npm run";
+  // lint only where the repo has the script: a received repo may not.
+  const lint = pm === "pnpm" ? "pnpm run --if-present lint" : "npm run --if-present lint";
   return `# syntax=docker/dockerfile:1
 
 # --- build -------------------------------------------------------------------
@@ -67,7 +69,7 @@ ENV NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=$NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN
 ARG NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN
 ENV NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=$NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN
 # Publish only an image that passes the kit's tests and lint.
-RUN ${run} test:scripts && ${run} lint && ${run} build
+RUN ${run} test:scripts && ${lint} && ${run} build
 
 # --- runtime -----------------------------------------------------------------
 FROM node:24-slim AS runtime

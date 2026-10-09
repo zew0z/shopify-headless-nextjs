@@ -113,7 +113,7 @@ export function planKitInstall({ kitRoot, target, appRoot }) {
   if (!existsSync(path.join(target, ".dockerignore"))) extras.push({ to: ".dockerignore", text: DOCKERIGNORE });
   if (!existsSync(path.join(target, ".github/workflows/deploy-image.yaml"))) extras.push({ to: ".github/workflows/deploy-image.yaml", text: DEPLOY_WORKFLOW });
   const nextConfig = ["ts", "mjs", "js"].map((ext) => path.join(target, `next.config.${ext}`)).find((f) => existsSync(f));
-  const deployNote = nextConfig && /output:\s*["']standalone["']/.test(read(nextConfig)) ? null : 'Set output: "standalone" in next.config: the Dockerfile copies .next/standalone.';
+  const deployNote = existsSync(path.join(target, "Dockerfile")) || (nextConfig && /output:\s*["']standalone["']/.test(read(nextConfig))) ? null : 'Set output: "standalone" in next.config: the Dockerfile copies .next/standalone.';
 
   return { write, same, conflicts, packageJson: { add, conflicts: pkgConflicts }, gitignore, agentsNote, extras, deployNote, keptErrorPage: hasPage("error") };
 }
