@@ -76,3 +76,21 @@ test("a shop that does not track stock rejects variants claiming tracked: true",
   const c = catalog([product({ variants: [variant({ tracked: true })] })]);
   assert.match(problems(c, { tracksInventory: false }), /does not track inventory/);
 });
+
+test("a reference metafield names its entries in refs, and they must exist", () => {
+  const catalog = {
+    collections: [],
+    metaobjects: [{ type: "color_swatch", handle: "grey", fields: { label: "Grey" } }],
+    products: [
+      { handle: "a", title: "A", variants: [{ sku: "1", price: "1" }], metafields: [{ namespace: "custom", key: "color", type: "list.metaobject_reference", refs: ["color_swatch/grey"] }] },
+      { handle: "b", title: "B", variants: [{ sku: "2", price: "1" }], metafields: [{ namespace: "custom", key: "color", type: "list.metaobject_reference", refs: ["color_swatch/blue"] }] },
+      { handle: "c", title: "C", variants: [{ sku: "3", price: "1" }], metafields: [{ namespace: "custom", key: "color", type: "list.metaobject_reference", value: "[\"gid://x\"]" }] },
+      { handle: "d", title: "D", variants: [{ sku: "4", price: "1" }], metafields: [{ namespace: "custom", key: "main", type: "metaobject_reference", refs: ["color_swatch/grey", "color_swatch/grey"] }] },
+    ],
+  };
+  assert.deepEqual(validateCatalog(catalog), [
+    "b: metafield color refers to color_swatch/blue, which is not in the catalogue's metaobjects",
+    "c: metafield color is a reference, so it needs refs: [\"<type>/<handle>\"] instead of a value",
+    "d: metafield main holds one reference, refs has 2",
+  ]);
+});

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildProductInput } from "./build-input.mjs";
+import { buildProductInput, resolveMetafields } from "./build-input.mjs";
 
 const base = { collectionIds: {}, locationId: "gid://shopify/Location/1", tracksInventory: false, skipImages: false };
 const product = {
@@ -71,4 +71,27 @@ test("images become files, and can be skipped", () => {
 test("metafields pass through untouched", () => {
   const mf = [{ namespace: "custom", key: "material", type: "single_line_text_field", value: "Oak" }];
   assert.deepEqual(buildProductInput({ ...product, metafields: mf }, base).metafields, mf);
+});
+
+test("refs become entry ids: a JSON list for list types, one id otherwise", () => {
+  const refIds = { "color_swatch/grey": "gid://e/1", "color_swatch/oak": "gid://e/2" };
+  assert.deepEqual(
+    resolveMetafields(
+      [
+        { namespace: "custom", key: "color", type: "list.metaobject_reference", refs: ["color_swatch/grey", "color_swatch/oak"] },
+        { namespace: "custom", key: "main", type: "metaobject_reference", refs: ["color_swatch/grey"] },
+        { namespace: "custom", key: "seats", type: "number_integer", value: "3" },
+      ],
+      refIds
+    ),
+    [
+      { namespace: "custom", key: "color", type: "list.metaobject_reference", value: '["gid://e/1","gid://e/2"]' },
+      { namespace: "custom", key: "main", type: "metaobject_reference", value: "gid://e/1" },
+      { namespace: "custom", key: "seats", type: "number_integer", value: "3" },
+    ]
+  );
+});
+
+test("a ref with no id stops the push instead of sending a broken field", () => {
+  assert.throws(() => resolveMetafields([{ namespace: "custom", key: "c", type: "metaobject_reference", refs: ["color_swatch/x"] }], {}), /color_swatch\/x has no id/);
 });

@@ -23,6 +23,9 @@ function fakeShopify({ existingCollections = new Set(), failProductSet = false, 
       return reply({ productSet: { product: { id: `gid://prod/${variables.identifier.handle}`, handle: variables.identifier.handle, variants: { nodes: [] } }, userErrors: [] } });
     }
     if (/publishablePublish/.test(query)) return reply({ publishablePublish: { userErrors: [] } });
+    if (/metaobjectDefinitions\(/.test(query)) return reply({ metaobjectDefinitions: { nodes: [{ id: "gid://mo/hero", type: "hero_slide", fieldDefinitions: [{ key: "title", type: { name: "single_line_text_field" } }, { key: "subtitle", type: { name: "multi_line_text_field" } }, { key: "image", type: { name: "file_reference" } }, { key: "product", type: { name: "product_reference" } }, { key: "link", type: { name: "single_line_text_field" } }, { key: "rank", type: { name: "number_integer" } }] }] } });
+    if (/metafieldDefinitions\(/.test(query)) return reply({ metafieldDefinitions: { nodes: [] } });
+    if (/metaobjectUpsert/.test(query)) return reply({ metaobjectUpsert: { metaobject: { id: `gid://entry/${variables.handle.handle}` }, userErrors: [] } });
     throw new Error(`unexpected query: ${query.slice(0, 60)}`);
   };
   return { handler, calls };
@@ -144,4 +147,13 @@ test("an invalid catalogue exits before any network call", async () => {
   const broken = { collections: [], products: [{ handle: "Bad Handle", title: "x", variants: [] }] };
   await assert.rejects(pushCatalogue({ config: untracked, catalog: broken }), /exit 1/);
   assert.equal(shop.calls.length, 0);
+});
+
+test("definitions are read before collections, so product fields land in readable definitions", async () => {
+  const { handler, calls } = fakeShopify();
+  mock.method(globalThis, "fetch", handler);
+  await pushCatalogue({ config: untracked, catalog });
+  const first = calls.findIndex((c) => /metaobjectDefinitions\(/.test(c.query));
+  const firstCollection = calls.findIndex((c) => /collectionByHandle/.test(c.query));
+  assert.ok(first >= 0 && first < firstCollection);
 });

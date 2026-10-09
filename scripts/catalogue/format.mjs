@@ -13,11 +13,12 @@ const MAX_VARIANTS = 2048;
 const MAX_OPTIONS = 3;
 const MAX_IMAGES = 20;
 
-export function validateCatalog({ collections = [], products = [] }, { tracksInventory = false } = {}) {
+export function validateCatalog({ collections = [], products = [], metaobjects = [] }, { tracksInventory = false } = {}) {
   const problems = [];
   const collectionHandles = new Set();
   const productHandles = new Set();
   const skus = new Set();
+  const entryIds = new Set(metaobjects.map((m) => `${m.type}/${m.handle}`));
 
   for (const collection of collections) {
     if (!HANDLE_PATTERN.test(collection.handle ?? "")) problems.push(`collection handle not url-safe: "${collection.handle}"`);
@@ -47,6 +48,17 @@ export function validateCatalog({ collections = [], products = [] }, { tracksInv
 
     for (const metafield of product.metafields ?? []) {
       if (!metafield.namespace || !metafield.key || !metafield.type) problems.push(`${id}: metafield needs namespace, key and type`);
+      if (/metaobject_reference$/.test(metafield.type ?? "")) {
+        if (!Array.isArray(metafield.refs) || !metafield.refs.length) {
+          problems.push(`${id}: metafield ${metafield.key} is a reference, so it needs refs: ["<type>/<handle>"] instead of a value`);
+          continue;
+        }
+        if (!metafield.type.startsWith("list.") && metafield.refs.length !== 1) problems.push(`${id}: metafield ${metafield.key} holds one reference, refs has ${metafield.refs.length}`);
+        for (const ref of metafield.refs) {
+          if (!entryIds.has(ref)) problems.push(`${id}: metafield ${metafield.key} refers to ${ref}, which is not in the catalogue's metaobjects`);
+        }
+        continue;
+      }
       if (metafield.type?.startsWith("list.") && typeof metafield.value === "string" && !metafield.value.startsWith("[")) {
         problems.push(`${id}: metafield ${metafield.key} is a list type, so value must be a JSON-encoded array string`);
       }

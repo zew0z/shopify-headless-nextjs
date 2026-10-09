@@ -8,7 +8,9 @@
 import { adminGraphQL, publicationInputs } from "../shopify/admin-client.mjs";
 import { bad, heading, info, ok } from "../shopify/env.mjs";
 import { buildProductInput } from "./build-input.mjs";
+import { pushDefinitions, wantedDefinitions } from "./definitions.mjs";
 import { validateCatalog } from "./format.mjs";
+import { pushEntries, validateEntries } from "./metaobjects.mjs";
 
 const COLLECTION_BY_HANDLE = `query($handle: String!) { collectionByHandle(handle: $handle) { id } }`;
 const COLLECTION_CREATE = `mutation($input: CollectionInput!) { collectionCreate(input: $input) { collection { id } userErrors { field message } } }`;
@@ -46,7 +48,8 @@ async function pickLocation(locationId) {
 
 export async function pushCatalogue({ config, catalog, dryRun = false, limit, only, skipImages = false, locationId }) {
   const tracksInventory = config.tracksInventory;
-  const problems = validateCatalog(catalog, { tracksInventory });
+  const wanted = wantedDefinitions(catalog, { wantsReviews: config.wantsReviews });
+  const problems = [...validateCatalog(catalog, { tracksInventory }), ...wanted.problems, ...validateEntries(catalog.metaobjects, wanted.metaobjects)];
   heading(`Catalogue  ${catalog.collections.length} collections, ${catalog.products.length} products`);
   if (problems.length) {
     problems.slice(0, 40).forEach((p) => bad(p));
@@ -57,6 +60,7 @@ export async function pushCatalogue({ config, catalog, dryRun = false, limit, on
   ok("validates");
 
   if (dryRun) {
+    info(`definitions: ${wanted.metaobjects.length} content types, ${wanted.metafields.length} product fields; ${(catalog.metaobjects ?? []).length} content entries`);
     describePlan(catalog, { limit }).forEach((line) => info(line));
     ok("dry run, nothing was written");
     return;
@@ -65,6 +69,10 @@ export async function pushCatalogue({ config, catalog, dryRun = false, limit, on
   const location = tracksInventory ? await pickLocation(locationId) : undefined;
   const { nodes, input: publishTo } = await publicationInputs();
   heading(`Publishing to: ${nodes.map((p) => p.name).join(", ")}`);
+
+  heading("Definitions and content entries");
+  await pushDefinitions(wanted);
+  const refIds = await pushEntries(catalog.metaobjects ?? []);
 
   const collectionIds = {};
   for (const [index, collection] of catalog.collections.entries()) {
@@ -93,7 +101,7 @@ export async function pushCatalogue({ config, catalog, dryRun = false, limit, on
   heading(`Products${skipImages ? " (images skipped)" : ""}`);
   let pushed = 0;
   for (const product of products) {
-    const input = buildProductInput(product, { collectionIds, locationId: location, tracksInventory, skipImages });
+    const input = buildProductInput(product, { collectionIds, locationId: location, tracksInventory, skipImages, refIds });
     const data = await adminGraphQL(PRODUCT_SET, { identifier: { handle: product.handle }, input });
     await adminGraphQL(PUBLISH, { id: data.productSet.product.id, input: publishTo });
     pushed += 1;
