@@ -29,7 +29,7 @@ export function compareToCatalogue({ handles, summary }, catalog) {
   if (summary.variants !== expectedVariants) problems.push(`variants: expected ${expectedVariants}, storefront has ${summary.variants}`);
   if (summary.collections !== catalog.collections.length) problems.push(`collections: expected ${catalog.collections.length}, storefront has ${summary.collections}`);
   const expectedImages = expected.filter((p) => (p.images ?? []).length > 0).length;
-  if (summary.withImage < expectedImages) problems.push(`images: ${expectedImages} products should have one, storefront shows ${summary.withImage}. Image processing is asynchronous; wait and re-run, then look for FAILED media.`);
+  if (summary.withImage < expectedImages) problems.push(`images: ${expectedImages} products should have one, storefront shows ${summary.withImage}. Image processing is asynchronous; wait and re-run, then look for FAILED media. If a supplier's site blocks Shopify (media FAILED), push again with --rehost=<that host>.`);
   return problems;
 }
 

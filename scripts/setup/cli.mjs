@@ -24,7 +24,7 @@ import { loadSdkDocuments, validateDocuments } from "../shopify/validate-storefr
 import { shopMismatches, versionStatus } from "../shopify/version.mjs";
 import { bad, heading, info, mask, ok, shopifyEnv, readEnv, upsertEnv, warn } from "../shopify/env.mjs";
 
-const USAGE = "usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | definitions [--dry-run] | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | analytics-configure [--enable|--disable] [--shop-id=ID --origins=https://... --country=XX --language=XX --currency=XXX] [--dry-run] | analytics-check [--site=https://...] | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>]";
+const USAGE = "usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--rehost=host,...] [--location=<id>] | catalogue-verify | definitions [--dry-run] | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | analytics-configure [--enable|--disable] [--shop-id=ID --origins=https://... --country=XX --language=XX --currency=XXX] [--dry-run] | analytics-check [--site=https://...] | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>]";
 const HELP_WORDS = ["--help", "-h", "help"];
 const STATE_FILE = "store-setup.state.json";
 const { command, args, flags } = parseArgs(process.argv.slice(2));
@@ -107,6 +107,7 @@ switch (command) {
       only: flags.only,
       skipImages: flags["skip-images"] === true,
       locationId: flags.location,
+      rehost: typeof flags.rehost === "string" ? flags.rehost.split(",").map((h) => h.trim()).filter(Boolean) : [],
     });
     break;
   }

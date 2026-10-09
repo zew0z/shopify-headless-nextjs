@@ -5,12 +5,14 @@
  * the classic "Admin has 200 products, the site shows none" bug.
  * UNVERIFIED until run against a development store (Task 9).
  */
+import { existsSync, readFileSync } from "node:fs";
 import { adminGraphQL, publicationInputs } from "../shopify/admin-client.mjs";
 import { bad, heading, info, ok } from "../shopify/env.mjs";
 import { buildProductInput } from "./build-input.mjs";
 import { pushDefinitions, wantedDefinitions } from "./definitions.mjs";
 import { validateCatalog } from "./format.mjs";
 import { pushEntries, validateEntries } from "./metaobjects.mjs";
+import { IMAGE_MAP_FILE, applyImageMap, rehostImages, rehostTargets } from "./rehost.mjs";
 
 const COLLECTION_BY_HANDLE = `query($handle: String!) { collectionByHandle(handle: $handle) { id } }`;
 const COLLECTION_CREATE = `mutation($input: CollectionInput!) { collectionCreate(input: $input) { collection { id } userErrors { field message } } }`;
@@ -46,7 +48,7 @@ async function pickLocation(locationId) {
   return found.id;
 }
 
-export async function pushCatalogue({ config, catalog, dryRun = false, limit, only, skipImages = false, locationId }) {
+export async function pushCatalogue({ config, catalog, dryRun = false, limit, only, skipImages = false, locationId, rehost = [] }) {
   const tracksInventory = config.tracksInventory;
   const wanted = wantedDefinitions(catalog, { wantsReviews: config.wantsReviews });
   const problems = [...validateCatalog(catalog, { tracksInventory }), ...wanted.problems, ...validateEntries(catalog.metaobjects, wanted.metaobjects)];
@@ -62,9 +64,19 @@ export async function pushCatalogue({ config, catalog, dryRun = false, limit, on
   if (dryRun) {
     info(`definitions: ${wanted.metaobjects.length} content types, ${wanted.metafields.length} product fields; ${(catalog.metaobjects ?? []).length} content entries`);
     describePlan(catalog, { limit }).forEach((line) => info(line));
+    if (rehost.length) info(`would re-upload ${rehostTargets(catalog, rehost).length} photo(s) from ${rehost.join(", ")}`);
     ok("dry run, nothing was written");
     return;
   }
+
+  if (rehost.length && !skipImages) {
+    heading(`Re-uploading photos from ${rehost.join(", ")}`);
+    const { failed } = await rehostImages(rehostTargets(catalog, rehost));
+    failed.forEach((f) => bad(`${f.url}: ${f.error}`));
+    if (failed.length) info(`${failed.length} photo(s) not re-uploaded. Those products keep the supplier url; list them for the owner.`);
+  }
+  // Earlier runs' uploads count even without --rehost, so a re-run never goes back to a blocked url.
+  if (existsSync(IMAGE_MAP_FILE)) catalog = applyImageMap(catalog, JSON.parse(readFileSync(IMAGE_MAP_FILE, "utf8")));
 
   const location = tracksInventory ? await pickLocation(locationId) : undefined;
   const { nodes, input: publishTo } = await publicationInputs();
