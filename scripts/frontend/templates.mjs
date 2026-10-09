@@ -59,6 +59,13 @@ COPY . .
 # the site is served from has to be known here.
 ARG NEXT_PUBLIC_SITE_URL
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+# Pages that read Shopify are pre-rendered at build time, so the build needs the
+# shop's public Storefront settings. The public token ships to browsers by
+# design; never pass the Admin token.
+ARG NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN
+ENV NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=$NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN
+ARG NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN
+ENV NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=$NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN
 # Publish only an image that passes the kit's tests and lint.
 RUN ${run} test:scripts && ${run} lint && ${run} build
 
@@ -167,9 +174,14 @@ jobs:
           context: .
           push: true
           tags: \${{ steps.tag.outputs.IMAGE_URL }}
+          # The two SHOPIFY_* values are GitHub repository variables (Settings >
+          # Secrets and variables > Actions > Variables), set once per shop. They
+          # are the public Storefront settings, not secrets.
           build-args: |
             NEXT_PUBLIC_SITE_URL=\${{ steps.tag.outputs.SITE_URL }}
             GIT_COMMIT=\${{ github.sha }}
+            NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=\${{ vars.SHOPIFY_STORE_DOMAIN }}
+            NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=\${{ vars.SHOPIFY_STOREFRONT_ACCESS_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # Attestations publish extra sha256-*.att tags that clutter the

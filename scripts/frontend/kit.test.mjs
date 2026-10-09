@@ -147,8 +147,12 @@ test("kit-install adds the NOTIXV deploy files when the repo has none, for its p
   assert.match(docker.text, /pnpm install --frozen-lockfile/);
   assert.match(docker.text, /COPY --from=build \/app\/\.next\/standalone/);
   assert.match(docker.text, /USER 1000/);
+  assert.match(docker.text, /^ARG NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN$/m);
+  assert.match(docker.text, /^ARG NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN$/m);
   const workflow = plan.extras.find((e) => e.to === ".github/workflows/deploy-image.yaml");
   assert.match(workflow.text, /IMAGE: \$\{\{ github\.event\.repository\.name \}\}/);
+  assert.match(workflow.text, /NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=\$\{\{ vars\.SHOPIFY_STORE_DOMAIN \}\}/);
+  assert.match(workflow.text, /NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=\$\{\{ vars\.SHOPIFY_STOREFRONT_ACCESS_TOKEN \}\}/);
   assert.match(plan.extras.find((e) => e.to === ".dockerignore").text, /^node_modules$/m);
   assert.match(plan.deployNote, /output: "standalone"/);
 });
