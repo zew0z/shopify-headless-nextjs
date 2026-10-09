@@ -82,7 +82,8 @@ does this; `catalogue-verify` proves it.
 
 ### Storefront API returns `null` for every metafield
 The definition lacks storefront visibility: `access: { storefront: "PUBLIC_READ" }`.
-The most common cause of an empty filter UI.
+The most common cause of an empty filter UI. `pnpm shop-setup definitions`
+creates or opens these; the catalogue push runs it first.
 
 ### Every webhook delivery is a 401, or 503
 401: `SHOPIFY_WEBHOOK_SECRET` differs from the secret that signed the payload.

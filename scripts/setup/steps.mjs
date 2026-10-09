@@ -32,7 +32,7 @@ export const STEPS = [
     owner: "code",
     needs: ["kit-install"],
     instructions:
-      "Follow docs/frontend-wiring.md, sections Catalogue, Product page and Header, footer, policies and pages. Keep their components and their product type: write one mapper from the SDK's Product to their type, read products and collections with the SDK in server components, pass the mapped data down. Lists use the paged reads (getProductsPage, getCollectionProductsPage, searchProducts) with Shopify's own filters, never a filter over the whole catalogue in memory; the product page gets extra fields from getProduct(handle, { metafields }); menus, policies and info pages come from getMenu, menuLinks, getPolicies and getPage. Fields Shopify does not have (ratings, reviews, made-up was-prices, announcement bar, newsletter) are hidden and listed for the owner, never invented. Remove anything that switches caching off on pages that show products, and allow cdn.shopify.com in next.config images. Done when the code is in and builds against mock.shop or the development store.",
+      "Follow docs/frontend-wiring.md, sections Catalogue, Product page and Header, footer, policies and pages. Keep their components and their product type: write one mapper from the SDK's Product to their type, read products and collections with the SDK in server components, pass the mapped data down. Lists use the paged reads (getProductsPage, getCollectionProductsPage, searchProducts) with Shopify's own filters, never a filter over the whole catalogue in memory; the product page gets extra fields from getProduct(handle, { metafields }); menus, policies and info pages come from getMenu, menuLinks, getPolicies and getPage. Reviews come from getReviews (only when wantsReviews is true) and the hero from getHeroSlides; the contact form and newsletter post to /api/contact; page metadata uses productMetadata and collectionMetadata. Fields Shopify still does not have (made-up was-prices, announcement bar) are hidden and listed for the owner, never invented. Remove anything that switches caching off on pages that show products, and allow cdn.shopify.com in next.config images. Done when the code is in and builds against mock.shop or the development store.",
   },
   {
     id: "frontend-cart",
@@ -139,7 +139,7 @@ export const STEPS = [
     owner: "human",
     needs: ["headless-channel", "frontend-check"],
     instructions:
-      "Deploy the frontend to its host, point the main domain's DNS at it, set the PUBLIC env vars there (never the Admin token), and set up an uptime check. Only the owner has the hosting and DNS accounts. Give the agent the live URL: it becomes SITE_URL and E2E_SITE_URL.",
+      "kit-install added a Dockerfile, a .dockerignore and .github/workflows/deploy-image.yaml (NOTIXV setup); next.config must have output: \"standalone\". A push to dev or main builds the image and pushes it to NOTIXV's Artifact Registry; Flux deploys it. The image build pre-renders pages that read Shopify, so the repo needs two GitHub repository variables (Settings > Secrets and variables > Actions > Variables): SHOPIFY_STORE_DOMAIN and SHOPIFY_STOREFRONT_ACCESS_TOKEN. That is the public Storefront token, never the Admin token. Once the owner says the repo exists on GitHub, the agent sets both with gh variable set. Ask whoever runs the NOTIXV cluster to add this repo (it serves at <repo>.landings.notixv.com). Set the runtime env there: SHOPIFY_STORE_DOMAIN, SHOPIFY_STOREFRONT_ACCESS_TOKEN, SHOPIFY_WEBHOOK_SECRET and the contact-form vars (never the Admin token). Then point the main domain's DNS at it and set up an uptime check on /api/health. Give the agent the live URL: it becomes SITE_URL and E2E_SITE_URL.",
   },
   {
     id: "preflight",
@@ -163,8 +163,17 @@ export const STEPS = [
     owner: "api",
     needs: ["preflight", "intake"],
     instructions:
-      "Write a source module for this client (copy scripts/catalogue/sources/_template.mjs; read docs/catalogue-import.md first and report real counts to the owner before deciding variant grouping). Then: pnpm shop-setup catalogue-build, pnpm shop-setup catalogue --dry-run, pnpm shop-setup catalogue --limit=3 and look at them in the Admin, pnpm shop-setup catalogue, then pnpm shop-setup catalogue-verify. A re-run updates, never duplicates. Mark done only when catalogue-verify reports no problems.",
+      "Write a source module for this client (copy scripts/catalogue/sources/_template.mjs; read docs/catalogue-import.md first and report real counts to the owner before deciding variant grouping; if the supplier's photos come back FAILED, push again with --rehost=<their host>). Then: pnpm shop-setup catalogue-build, pnpm shop-setup catalogue --dry-run, pnpm shop-setup catalogue --limit=3 and look at them in the Admin, pnpm shop-setup catalogue, then pnpm shop-setup catalogue-verify. A re-run updates, never duplicates. Mark done only when catalogue-verify reports no problems.",
     automation: "catalogue",
+  },
+  {
+    id: "content-types",
+    title: "Create the content types and product fields the site reads",
+    owner: "api",
+    needs: ["preflight", "intake"],
+    instructions:
+      "Run pnpm shop-setup definitions --dry-run, show the owner the list, then pnpm shop-setup definitions. It creates the Hero slide type (and Customer review when wantsReviews is true) and a storefront-readable definition for every product field the catalogue sets. The catalogue push runs it too. Tell the owner: hero slides and reviews are entered in the admin under Content > Metaobjects; an empty list hides that part of the site.",
+    automation: "definitions",
   },
   {
     id: "inventory",
@@ -245,6 +254,14 @@ export const STEPS = [
       "Settings > Notifications > Sender email > Authenticate domain, then add the DNS records Shopify lists (DKIM and SPF) at the DNS provider. Only the person with DNS access can do this.",
   },
   {
+    id: "contact-form",
+    title: "Connect the contact form and newsletter to the owner's inbox",
+    owner: "human",
+    needs: ["hosting"],
+    instructions:
+      "Only if the site has a contact form or newsletter box. The owner makes a Resend account (resend.com), verifies the shop's domain there, and creates an API key. Set RESEND_API_KEY, CONTACT_FROM (for example Shop <noreply@their-domain>) and CONTACT_TO (their inboxes, comma-separated) in the host's environment, never in the code. The endpoint has no rate limit of its own: ask the host to rate-limit POST /api/contact at its edge or firewall. Then send one test message through the live form and confirm it arrived. Without these the form answers not_configured, so the frontend must show a plain error for that.",
+  },
+  {
     id: "staff-alerts",
     title: "Set who is told about new orders",
     owner: "browser",
@@ -291,7 +308,7 @@ export const STEPS = [
     owner: "code",
     needs: ["hosting"],
     instructions:
-      "Follow-on plan. The agent adds sitemap.xml and robots.txt to the frontend, canonical URLs, product structured data, and 301 redirects from any old URLs when migrating a shop.",
+      "Follow-on plan. The agent adds sitemap.xml and robots.txt to the frontend, canonical URLs, product structured data, and 301 redirects from any old URLs when migrating a shop. productMetadata and collectionMetadata (src/lib/shopify/seo.ts) give titles, descriptions, canonical paths and link-preview photos.",
   },
   {
     id: "search-console",

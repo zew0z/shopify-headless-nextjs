@@ -59,9 +59,36 @@ ends in `:` is a heading). Descriptions go into `descriptionHtml`.
 Shopify fetches the URL you give it. Some vendor CDNs answer Shopify's fetcher
 with a 403 while serving browsers fine: media shows `FAILED` and the product has
 no pictures. Those need the file downloaded and re-uploaded
-(`stagedUploadsCreate`, then `fileCreate`). That tooling is a later plan; until
-then, list the products with failed media for the owner. Image processing is
-asynchronous: a clean `productSet` does not mean the pictures landed.
+(`stagedUploadsCreate`, then `fileCreate`). Push again with
+`--rehost=<host>`: the kit downloads those photos and uploads them to Shopify
+Files, saving the url map in `data/image-map.json` (commit it). Photos that still
+fail are listed; give that list to the owner. Image processing is asynchronous: a
+clean `productSet` does not mean the pictures landed.
+
+## Extra fields and content entries
+
+A source can return more than products and collections:
+
+- `definitions`: the content types (`metaobjects`) and extra product fields
+  (`metafields`) the source needs.
+- `metaobjects`: the entries of those content types, each with a `type`, a
+  `handle` and its `fields`.
+- `refs` on a product metafield: the entries it points at, named `type/handle`.
+
+One example return value:
+
+```js
+return {
+  definitions: { metaobjects: [{ type: "color_swatch", name: "Colour", displayNameKey: "label", fieldDefinitions: [{ key: "label", name: "Label", type: "single_line_text_field", required: true }, { key: "hex", name: "Hex", type: "single_line_text_field" }] }] },
+  metaobjects: [{ type: "color_swatch", handle: "grey", fields: { label: "Grey", hex: "#8a8a8a" } }],
+  collections: [],
+  products: [{ handle: "milano", title: "Milano", variants: [{ sku: "M-1", price: "899" }], metafields: [{ namespace: "custom", key: "color", type: "list.metaobject_reference", refs: ["color_swatch/grey"] }] }],
+};
+```
+
+Every metafield gets a storefront-readable definition automatically. `refs` name
+entries by `type/handle`. `pnpm shop-setup definitions --dry-run` shows what
+would be created.
 
 ## Testing a source
 

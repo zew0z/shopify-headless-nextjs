@@ -124,3 +124,14 @@ test("every automation names a command the CLI has", async () => {
   const commands = new Set([...cli.matchAll(/case "([\w-]+)":/g)].map((m) => m[1]));
   for (const s of STEPS) if (s.automation) assert.ok(commands.has(s.automation), `${s.id} names unknown command ${s.automation}`);
 });
+
+test("the new setup steps exist and name their commands", () => {
+  const byId = Object.fromEntries(STEPS.map((s) => [s.id, s]));
+  assert.equal(byId["content-types"].automation, "definitions");
+  assert.deepEqual(byId["content-types"].needs, ["preflight", "intake"]);
+  assert.equal(byId["contact-form"].owner, "human");
+  assert.match(byId["dev-app"].instructions, /write_metaobject_definitions, write_metaobjects/);
+  assert.match(byId.hosting.instructions, /landings\.notixv\.com/);
+  assert.match(byId.hosting.instructions, /gh variable set/);
+  assert.match(byId.hosting.instructions, /SHOPIFY_STOREFRONT_ACCESS_TOKEN/);
+});

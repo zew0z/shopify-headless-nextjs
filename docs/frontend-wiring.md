@@ -239,12 +239,58 @@ Follow [shopify-analytics.md](shopify-analytics.md) to explicitly enable and con
 
 | Their UI | What to do |
 |---|---|
-| Ratings, review counts, reviews | Hide. Ask: a reviews app, or product metafields? |
+| Ratings, review counts, reviews | When the owner wants reviews: `getReviews({ product })` and `reviewSummary(reviews)`. Otherwise hide. |
 | Announcement bar, free-shipping line, contact email, social links | Hide and list. Open decision: whether these come from a "store settings" metaobject. |
-| Newsletter sign-up | Hide unless a sign-up service is connected. Ask. |
-| Hero copy and slogans | Use `shop.name`, `shop.description` and `shop.brand`, or ask the owner for the words. |
+| Contact form, newsletter sign-up | POST to `/api/contact` (see the codes below). Show a plain error for `not_configured`. |
+| Hero copy, slogans and pictures | `getHeroSlides()`: the owner's slides from Content > Metaobjects. Empty: hide the hero. |
 
 `frontend-audit` finds these in their code (invented fields like `rating`, `reviewCount`, `reviews`, `stockLeft`, `badge`, `subscribable`, typed-in menus, policy text and store claims, card payment forms) and `frontend-check` fails while they still reach customers. A card form never stays: payment is Shopify's checkout (it is deleted, see "Dead code" below).
+
+### Reviews and the hero
+
+- `getReviews({ product, first })` reads the 250 most recently saved Customer review entries (optionally only one product's). `reviewSummary(reviews)` gives `{ count, average }`. Show stars only when `count` is above zero.
+- `getHeroSlides()` reads at most 20 Hero slide entries, in the owner's order. A slide's `href` is the owner's raw link text: render it as a link only when it starts with `/` or `https://`, otherwise show the slide with no link.
+- `getMetaobjects(type)` is the generic read for any other content type.
+
+## Contact form
+
+The contact form and the newsletter box both post JSON to `/api/contact`.
+
+| Body | Fields |
+|---|---|
+| Contact message | `{ "type": "contact", "name", "email", "phone"?, "subject"?, "message", "website"? }` |
+| Newsletter | `{ "type": "newsletter", "email", "website"? }` |
+
+The answer is `{ "ok": true }` or `{ "ok": false, "error": "<code>" }`.
+
+| Code | Status | Meaning |
+|---|---|---|
+| `invalid_json` | 400 | The body was not JSON. |
+| `invalid_email` | 400 | The email does not look like an email. |
+| `missing_fields` | 400 | A required field is empty. |
+| `not_configured` | 503 | The host has no mail settings yet. Show a plain error. |
+| `send_failed` | 502 | The mail service refused it. Show a plain error and let them retry. |
+
+The code is not a sentence: show your own text, in the shop's language.
+
+`website` is a trap for spam robots. Put it in the form, hidden from people: visually hidden, `tabindex="-1"`, `autocomplete="off"`, `aria-hidden="true"`. If it is visible, browser autofill fills it and real messages are silently dropped.
+
+The endpoint has no rate limit. Ask the host to rate-limit `POST /api/contact` at its edge or firewall.
+
+## Page metadata
+
+Titles, descriptions, canonical paths and link-preview photos come from Shopify's own fields. `productMetadata` and `collectionMetadata` (in `src/lib/shopify/seo.ts`) return the full title as `<title> | <shop name>`.
+
+In the root layout set `metadataBase` from `SITE_URL`, and do not set a `title.template`, or the shop name appears twice.
+
+```tsx
+// app/products/[handle]/page.tsx
+export async function generateMetadata({ params }: { params: Promise<{ handle: string }> }) {
+  const { handle } = await params;
+  const [product, shop] = await Promise.all([getProduct(handle), getShop()]);
+  return product ? productMetadata(product, { path: `/products/${handle}`, shopName: shop.name }) : {};
+}
+```
 
 ## Dead code
 

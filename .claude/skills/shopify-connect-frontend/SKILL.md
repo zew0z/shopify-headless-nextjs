@@ -21,7 +21,10 @@ Steps `frontend-audit` → `kit-install` → `frontend-catalogue` → `frontend-
    - Header, footer, policies and info pages: `getShop`, `getMenu`, `menuLinks`, `getPolicies`, `getPolicy`, `getPage` (guide: "Header, footer, policies and pages").
    - Cart: `CartProvider` and `useCart()` from `@/lib/shopify/cart-provider` (guide: "Cart").
    - Shopify analytics (Live View, visitor reports): `<ShopifyAnalytics />` in the root layout and `<ShopifyProductView>` on the product page (guide: "Shopify analytics" and docs/shopify-analytics.md). Explicitly configure the current store/origins/localization with analytics-configure; run analytics-check. Product/cart reporting requires the experimental opt-in and separate dashboard proof.
-   - Anything Shopify has no value for: hide it and list it (guide: "Things Shopify does not have").
+   - Reviews: `getReviews({ product })` and `reviewSummary(reviews)`, only when the owner wants reviews. Hero: `getHeroSlides()`; render a slide's `href` only when it starts with `/` or `https://` (guide: "Things Shopify does not have", "Reviews and the hero").
+   - Contact form and newsletter: POST to `/api/contact`; render the `website` honeypot hidden from people; show a plain error for `not_configured`; the host must rate-limit it (guide: "Contact form").
+   - Page metadata: `productMetadata` and `collectionMetadata` in `generateMetadata`; set `metadataBase` from `SITE_URL` in the root layout and no `title.template` (guide: "Page metadata").
+   - Anything Shopify still has no value for (made-up was-prices, announcement bar): hide it and list it (guide: "Things Shopify does not have").
 5. **Check**: while wiring, run `pnpm exec tsc --noEmit` (`next lint` no longer exists in Next 16). When the wiring is in: `pnpm shop-setup frontend-check`, then `pnpm build`, `pnpm start`, and `pnpm shop-setup frontend-check --site http://localhost:3000` (it loads the home page and one product page and needs Shopify images on both). Then click through with the development store's public token in `.env.local`.
 6. **Hand over** to `.claude/skills/shopify-store-setup/SKILL.md` for the rest of the store (`pnpm shop-setup next`).
 
@@ -35,7 +38,7 @@ Steps `frontend-audit` → `kit-install` → `frontend-catalogue` → `frontend-
 ## Rules
 
 - Their components, styles and copy stay. If a change to the design is unavoidable (no variant picker, a field Shopify cannot fill), ask the owner first.
-- Never invent ratings, reviews, badges or was-prices to fill their UI. Hide the empty bit and list it for the owner.
+- Never invent ratings, reviews, badges or was-prices to fill their UI. Reviews and hero slides come from `getReviews` and `getHeroSlides`; for anything else, hide the empty bit and list it for the owner.
 - Never call the SDK from a `"use client"` file; move the read to a server parent.
 - Never catch a Shopify error and show something else in its place. Errors reach `error.tsx`.
 - Never filter a whole catalogue in memory; use Shopify's filters and pages.
