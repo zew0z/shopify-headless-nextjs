@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { mergeSources, buildCatalogue } from "./build.mjs";
+import { makeFixture } from "../test-support/fixture.mjs";
 
 test("collections are de-duplicated by handle, products are kept as given", () => {
   const merged = mergeSources([
@@ -65,9 +66,25 @@ test("readCatalogFile explains a missing file instead of throwing", async () => 
 test("readCatalogFile returns arrays even when a key is absent, and explains broken JSON", async () => {
   const { outFile } = await setup({});
   writeFileSync(outFile, JSON.stringify({ products: [{ handle: "a" }] }));
-  assert.deepEqual(readCatalogFile(outFile).catalog, { collections: [], products: [{ handle: "a" }] });
+  assert.deepEqual(readCatalogFile(outFile).catalog, { collections: [], products: [{ handle: "a" }], definitions: { metaobjects: [], metafields: [] }, metaobjects: [] });
   writeFileSync(outFile, "{ not json");
   const broken = readCatalogFile(outFile);
   assert.equal(broken.ok, false);
   assert.match(broken.problem, /not valid JSON/);
+});
+
+test("definitions and content entries from every source are merged", () => {
+  const merged = mergeSources([
+    { products: [], definitions: { metaobjects: [{ type: "material" }] }, metaobjects: [{ type: "material", handle: "oak", fields: { label: "Oak" } }] },
+    { products: [], definitions: { metafields: [{ namespace: "custom", key: "seats" }] }, metaobjects: [{ type: "material", handle: "ash", fields: { label: "Ash" } }] },
+  ]);
+  assert.deepEqual(merged.definitions, { metaobjects: [{ type: "material" }], metafields: [{ namespace: "custom", key: "seats" }] });
+  assert.deepEqual(merged.metaobjects.map((m) => m.handle), ["oak", "ash"]);
+});
+
+test("reading the catalogue keeps definitions and content entries", () => {
+  const root = makeFixture({ "catalog.json": { collections: [], products: [], definitions: { metaobjects: [{ type: "material" }], metafields: [] }, metaobjects: [{ type: "material", handle: "oak", fields: {} }] } });
+  const { catalog } = readCatalogFile(`${root}/catalog.json`);
+  assert.equal(catalog.definitions.metaobjects[0].type, "material");
+  assert.equal(catalog.metaobjects[0].handle, "oak");
 });

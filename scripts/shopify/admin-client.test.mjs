@@ -35,9 +35,9 @@ afterEach(() => {
   mock.restoreAll();
 });
 
-test("allScopes covers shipping, policies and the catalogue push", () => {
+test("allScopes covers shipping, policies, the catalogue push and content definitions", () => {
   const all = allScopes();
-  for (const scope of ["write_shipping", "write_legal_policies", "write_products", "write_publications", "write_inventory", "read_locations"]) {
+  for (const scope of ["write_shipping", "write_legal_policies", "write_products", "write_publications", "write_inventory", "read_locations", "write_metaobject_definitions", "write_metaobjects"]) {
     assert.ok(all.includes(scope), `${scope} missing`);
   }
 });

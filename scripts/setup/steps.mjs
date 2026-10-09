@@ -122,7 +122,7 @@ export const STEPS = [
     title: "Create the Dev Dashboard app with the Admin scopes and install it",
     owner: "browser",
     needs: ["store-basics"],
-    instructions: `Settings > Apps and sales channels > Develop apps > Build apps in Dev Dashboard. Scopes: write_shipping, read_locations, write_legal_policies, write_products, write_publications, write_inventory, write_files. Redirect URL exactly http://localhost:3456/callback (only needed for the OAuth fallback). Release a new app version, then install the app on the store from the Dev Dashboard (use its Install button; the exact clicks were not in Shopify's docs, so say what you see). Read Client ID and Client secret into .env.local (SHOPIFY_APP_CLIENT_ID, SHOPIFY_APP_CLIENT_SECRET). ${FALLBACK}`,
+    instructions: `Settings > Apps and sales channels > Develop apps > Build apps in Dev Dashboard. Scopes: write_shipping, read_locations, write_legal_policies, write_products, write_publications, write_inventory, write_files, write_metaobject_definitions, write_metaobjects. Redirect URL exactly http://localhost:3456/callback (only needed for the OAuth fallback). Release a new app version, then install the app on the store from the Dev Dashboard (use its Install button; the exact clicks were not in Shopify's docs, so say what you see). Read Client ID and Client secret into .env.local (SHOPIFY_APP_CLIENT_ID, SHOPIFY_APP_CLIENT_SECRET). ${FALLBACK}`,
   },
   {
     id: "oauth",

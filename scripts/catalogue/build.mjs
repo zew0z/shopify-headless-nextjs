@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { validateCatalog } from "./format.mjs";
+import { wantedDefinitions } from "./definitions.mjs";
 
 export const SOURCES_DIR = path.join(process.cwd(), "scripts", "catalogue", "sources");
 export const CATALOG_FILE = path.join(process.cwd(), "data", "catalog.json");
@@ -16,7 +17,11 @@ export function mergeSources(results) {
       collections.push(collection);
     }
   }
-  return { collections, products: results.flatMap((r) => r.products ?? []) };
+  const definitions = {
+    metaobjects: results.flatMap((r) => r.definitions?.metaobjects ?? []),
+    metafields: results.flatMap((r) => r.definitions?.metafields ?? []),
+  };
+  return { collections, products: results.flatMap((r) => r.products ?? []), definitions, metaobjects: results.flatMap((r) => r.metaobjects ?? []) };
 }
 
 /** Runs every source module, merges, validates, and writes only if valid. */
@@ -32,7 +37,10 @@ export async function buildCatalogue({ config, sourcesDir = SOURCES_DIR, outFile
     results.push(await load());
   }
   const catalog = mergeSources(results);
-  const problems = validateCatalog(catalog, { tracksInventory: config.tracksInventory });
+  const problems = [
+    ...validateCatalog(catalog, { tracksInventory: config.tracksInventory }),
+    ...wantedDefinitions(catalog, { wantsReviews: config.wantsReviews }).problems,
+  ];
   if (problems.length) return { ok: false, problems, catalog };
 
   mkdirSync(path.dirname(outFile), { recursive: true });
@@ -45,7 +53,16 @@ export function readCatalogFile(file = CATALOG_FILE) {
   if (!existsSync(file)) return { ok: false, catalog: null, problem: `${path.relative(process.cwd(), file)} not found. Run: pnpm shop-setup catalogue-build` };
   try {
     const raw = JSON.parse(readFileSync(file, "utf8"));
-    return { ok: true, catalog: { collections: raw.collections ?? [], products: raw.products ?? [] }, problem: null };
+    return {
+      ok: true,
+      catalog: {
+        collections: raw.collections ?? [],
+        products: raw.products ?? [],
+        definitions: { metaobjects: raw.definitions?.metaobjects ?? [], metafields: raw.definitions?.metafields ?? [] },
+        metaobjects: raw.metaobjects ?? [],
+      },
+      problem: null,
+    };
   } catch {
     return { ok: false, catalog: null, problem: `${path.relative(process.cwd(), file)} is not valid JSON. Re-run: pnpm shop-setup catalogue-build` };
   }

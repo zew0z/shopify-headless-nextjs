@@ -15,6 +15,7 @@ import { mintAdminToken } from "./token.mjs";
 export const SCOPES = {
   shipping: ["write_shipping", "read_locations"],
   policies: ["write_legal_policies"],
+  content: ["write_metaobject_definitions", "write_metaobjects"],
   catalogue: ["write_products", "write_publications", "write_inventory", "write_files", "read_locations"],
 };
 

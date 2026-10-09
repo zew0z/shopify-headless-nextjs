@@ -6,6 +6,7 @@ import { parseArgs } from "./args.mjs";
 import { buildCatalogue, readCatalogFile } from "../catalogue/build.mjs";
 import { fetchVariantTracking, inventoryMismatches } from "../catalogue/inventory.mjs";
 import { pushCatalogue } from "../catalogue/push.mjs";
+import { pushDefinitions, wantedDefinitions } from "../catalogue/definitions.mjs";
 import { compareToCatalogue, fetchStorefront, summarise } from "../catalogue/verify.mjs";
 import { nextActions } from "./engine.mjs";
 import { auditFrontend, summariseAudit } from "../frontend/audit.mjs";
@@ -23,7 +24,7 @@ import { loadSdkDocuments, validateDocuments } from "../shopify/validate-storefr
 import { shopMismatches, versionStatus } from "../shopify/version.mjs";
 import { bad, heading, info, mask, ok, shopifyEnv, readEnv, upsertEnv, warn } from "../shopify/env.mjs";
 
-const USAGE = "usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | analytics-configure [--enable|--disable] [--shop-id=ID --origins=https://... --country=XX --language=XX --currency=XXX] [--dry-run] | analytics-check [--site=https://...] | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>]";
+const USAGE = "usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--location=<id>] | catalogue-verify | definitions [--dry-run] | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | analytics-configure [--enable|--disable] [--shop-id=ID --origins=https://... --country=XX --language=XX --currency=XXX] [--dry-run] | analytics-check [--site=https://...] | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>]";
 const HELP_WORDS = ["--help", "-h", "help"];
 const STATE_FILE = "store-setup.state.json";
 const { command, args, flags } = parseArgs(process.argv.slice(2));
@@ -124,6 +125,25 @@ switch (command) {
     problems.forEach((p) => bad(p));
     if (problems.length) process.exit(1);
     ok("the storefront serves what was pushed");
+    break;
+  }
+  case "definitions": {
+    const config = loadConfig();
+    const file = readCatalogFile();
+    const catalog = file.ok ? file.catalog : { products: [], definitions: { metaobjects: [], metafields: [] } };
+    if (!file.ok) info("no data/catalog.json yet: only the kit's own types");
+    const wanted = wantedDefinitions(catalog, { wantsReviews: config.wantsReviews });
+    wanted.problems.forEach((p) => bad(p));
+    if (wanted.problems.length) process.exit(1);
+    heading(`Definitions  ${wanted.metaobjects.length} content types, ${wanted.metafields.length} product fields`);
+    if (flags["dry-run"]) {
+      wanted.metaobjects.forEach((d) => info(`type  ${d.type}: ${d.fieldDefinitions.map((f) => f.key).join(", ")}`));
+      wanted.metafields.forEach((d) => info(`field ${d.namespace}.${d.key} (${d.type})`));
+      ok("dry run, nothing was written");
+      break;
+    }
+    await pushDefinitions(wanted);
+    ok("definitions in place; the storefront can read every one");
     break;
   }
   case "inventory-check": {
