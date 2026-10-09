@@ -97,7 +97,7 @@ test("the plan creates what is missing, adds missing fields, opens storefront ac
     ],
   };
   const existing = {
-    metaobjects: [{ id: "gid://mo/1", type: "hero_slide", fieldDefinitions: [{ key: "title", type: { name: "single_line_text_field" } }] }],
+    metaobjects: [{ id: "gid://mo/1", type: "hero_slide", access: { storefront: "PUBLIC_READ" }, capabilities: { publishable: { enabled: true } }, fieldDefinitions: [{ key: "title", type: { name: "single_line_text_field" } }] }],
     metafields: [
       { id: "gid://mf/1", namespace: "custom", key: "frame", ownerType: "PRODUCT", type: { name: "single_line_text_field" }, access: { storefront: "NONE" } },
       { id: "gid://mf/2", namespace: "custom", key: "space", ownerType: "PRODUCT", type: { name: "number_integer" }, access: { storefront: "PUBLIC_READ" } },
@@ -106,14 +106,33 @@ test("the plan creates what is missing, adds missing fields, opens storefront ac
   const plan = planDefinitions(wanted, existing);
   assert.deepEqual(plan.createTypes.map((d) => d.type), ["material"]);
   assert.deepEqual(plan.addFields, [{ id: "gid://mo/1", type: "hero_slide", fields: [{ key: "rank", name: "Order", type: "number_integer" }] }]);
+  assert.deepEqual(plan.openTypes, []);
   assert.deepEqual(plan.createFields.map((d) => d.key), ["seats"]);
   assert.deepEqual(plan.openAccess.map((d) => d.key), ["frame"]);
   assert.match(plan.problems[0], /custom\.space is number_integer in Shopify, the catalogue wants single_line_text_field/);
 });
 
+test("the plan opens an existing type the storefront cannot read or that is not publishable", () => {
+  const def = (type) => ({ type, name: type, displayNameKey: "label", fieldDefinitions: [{ key: "label", name: "Label", type: "single_line_text_field" }] });
+  const wanted = { metaobjects: [def("closed"), def("draftonly"), def("open")], metafields: [] };
+  const fields = [{ key: "label", type: { name: "single_line_text_field" } }];
+  const existing = {
+    metaobjects: [
+      { id: "gid://mo/1", type: "closed", access: { storefront: "NONE" }, capabilities: { publishable: { enabled: true } }, fieldDefinitions: fields },
+      { id: "gid://mo/2", type: "draftonly", access: { storefront: "PUBLIC_READ" }, capabilities: { publishable: { enabled: false } }, fieldDefinitions: fields },
+      { id: "gid://mo/3", type: "open", access: { storefront: "PUBLIC_READ" }, capabilities: { publishable: { enabled: true } }, fieldDefinitions: fields },
+    ],
+    metafields: [],
+  };
+  const plan = planDefinitions(wanted, existing);
+  assert.deepEqual(plan.openTypes.map((t) => [t.id, t.type]), [["gid://mo/1", "closed"], ["gid://mo/2", "draftonly"]]);
+});
+
 // --- push, against a fake Admin API ---------------------------------------
 let calls;
+let existingTypes;
 beforeEach(() => {
+  existingTypes = null;
   process.env.SHOPIFY_STORE_DOMAIN = "defs-test";
   process.env.SHOPIFY_ADMIN_TOKEN = "shpat_defstest";
   calls = [];
@@ -122,9 +141,10 @@ beforeEach(() => {
   mock.method(globalThis, "fetch", async (_url, init) => {
     const { query, variables } = JSON.parse(init.body);
     calls.push({ query, variables });
-    if (/metaobjectDefinitions\(/.test(query)) return reply({ metaobjectDefinitions: { nodes: created ? [{ id: "gid://mo/9", type: "color_swatch", fieldDefinitions: [] }] : [] } });
+    if (/metaobjectDefinitions\(/.test(query)) return reply({ metaobjectDefinitions: { nodes: existingTypes ?? (created ? [{ id: "gid://mo/9", type: "color_swatch", fieldDefinitions: [] }] : []) } });
     if (/metafieldDefinitions\(/.test(query)) return reply({ metafieldDefinitions: { nodes: [] } });
     if (/metaobjectDefinitionCreate/.test(query)) { created = true; return reply({ metaobjectDefinitionCreate: { metaobjectDefinition: { id: "gid://mo/9", type: variables.definition.type }, userErrors: [] } }); }
+    if (/metaobjectDefinitionUpdate/.test(query)) return reply({ metaobjectDefinitionUpdate: { metaobjectDefinition: { id: variables.id }, userErrors: [] } });
     if (/metafieldDefinitionCreate/.test(query)) return reply({ metafieldDefinitionCreate: { createdDefinition: { id: "gid://mf/9" }, userErrors: [] } });
     throw new Error(`unexpected query: ${query.slice(0, 60)}`);
   });
@@ -155,4 +175,19 @@ test("push stops before writing when the plan has problems", async () => {
   const wanted = { metaobjects: [], metafields: [{ ownerType: "PRODUCT", namespace: "custom", key: "color", name: "Color", type: "list.metaobject_reference", refType: "nowhere" }] };
   await assert.rejects(pushDefinitions(wanted, { log: () => {} }), /no metaobject definition "nowhere"/);
   assert.equal(calls.filter((c) => /Create/.test(c.query)).length, 0);
+});
+
+test("push opens an existing type for the storefront and counts it once", async () => {
+  existingTypes = [{ id: "gid://mo/5", type: "hero_slide", access: { storefront: "NONE" }, capabilities: { publishable: { enabled: false } }, fieldDefinitions: [{ key: "title", type: { name: "single_line_text_field" } }, { key: "rank", type: { name: "number_integer" } }] }];
+  const wanted = {
+    metaobjects: [{ type: "hero_slide", name: "Hero slide", displayNameKey: "title", fieldDefinitions: [{ key: "title", name: "Title", type: "single_line_text_field" }, { key: "rank", name: "Order", type: "number_integer" }] }],
+    metafields: [],
+  };
+  const lines = [];
+  await pushDefinitions(wanted, { log: (l) => lines.push(l) });
+  const update = calls.find((c) => /metaobjectDefinitionUpdate/.test(c.query));
+  assert.equal(update.variables.id, "gid://mo/5");
+  assert.deepEqual(update.variables.definition, { access: { storefront: "PUBLIC_READ" }, capabilities: { publishable: { enabled: true } } });
+  assert.ok(lines.includes("  ~ type hero_slide: storefront can read it now"));
+  assert.ok(lines.includes("  = 0 definition(s) already right"));
 });

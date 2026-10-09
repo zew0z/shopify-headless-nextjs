@@ -101,12 +101,14 @@ export function planDefinitions(wanted, existing) {
   const haveTypes = new Map(existing.metaobjects.map((d) => [d.type, d]));
   const createTypes = [];
   const addFields = [];
+  const openTypes = [];
   for (const def of wanted.metaobjects) {
     const have = haveTypes.get(def.type);
     if (!have) {
       createTypes.push(def);
       continue;
     }
+    if (have.access?.storefront !== "PUBLIC_READ" || have.capabilities?.publishable?.enabled !== true) openTypes.push({ id: have.id, type: def.type });
     const haveFields = new Map(have.fieldDefinitions.map((f) => [f.key, f.type.name]));
     const missing = def.fieldDefinitions.filter((f) => !haveFields.has(f.key));
     for (const f of def.fieldDefinitions) {
@@ -124,10 +126,10 @@ export function planDefinitions(wanted, existing) {
     else if (have.type.name !== def.type) problems.push(`${def.namespace}.${def.key} is ${have.type.name} in Shopify, the catalogue wants ${def.type}`);
     else if (have.access?.storefront !== "PUBLIC_READ") openAccess.push(def);
   }
-  return { createTypes, addFields, createFields, openAccess, problems };
+  return { createTypes, addFields, openTypes, createFields, openAccess, problems };
 }
 
-const TYPES = `query { metaobjectDefinitions(first: 250) { nodes { id type fieldDefinitions { key type { name } } } } }`;
+const TYPES = `query { metaobjectDefinitions(first: 250) { nodes { id type access { storefront } capabilities { publishable { enabled } } fieldDefinitions { key type { name } } } } }`;
 const FIELDS = `query($owner: MetafieldOwnerType!) { metafieldDefinitions(first: 250, ownerType: $owner) { nodes { id namespace key ownerType type { name } access { storefront } } } }`;
 const CREATE_TYPE = `mutation($definition: MetaobjectDefinitionCreateInput!) { metaobjectDefinitionCreate(definition: $definition) { metaobjectDefinition { id type } userErrors { field message code } } }`;
 const UPDATE_TYPE = `mutation($id: ID!, $definition: MetaobjectDefinitionUpdateInput!) { metaobjectDefinitionUpdate(id: $id, definition: $definition) { metaobjectDefinition { id } userErrors { field message code } } }`;
@@ -157,6 +159,10 @@ export async function pushDefinitions(wanted, { log = console.log } = {}) {
     await adminGraphQL(UPDATE_TYPE, { id, definition: { fieldDefinitions: fields.map((f) => ({ create: f })) } });
     log(`  ~ type ${type}: added ${fields.map((f) => f.key).join(", ")}`);
   }
+  for (const { id, type } of plan.openTypes) {
+    await adminGraphQL(UPDATE_TYPE, { id, definition: { access: PUBLIC, capabilities: { publishable: { enabled: true } } } });
+    log(`  ~ type ${type}: storefront can read it now`);
+  }
   const typeIds = Object.fromEntries((await adminGraphQL(TYPES)).metaobjectDefinitions.nodes.map((d) => [d.type, d.id]));
 
   for (const { refType, ...def } of plan.createFields) {
@@ -168,7 +174,8 @@ export async function pushDefinitions(wanted, { log = console.log } = {}) {
     await adminGraphQL(UPDATE_FIELD, { definition: { namespace: def.namespace, key: def.key, ownerType: def.ownerType, access: PUBLIC } });
     log(`  ~ field ${def.namespace}.${def.key}: storefront can read it now`);
   }
-  const untouched = wanted.metaobjects.length + wanted.metafields.length - plan.createTypes.length - plan.createFields.length - plan.openAccess.length;
+  const touchedTypes = new Set([...plan.createTypes.map((d) => d.type), ...plan.addFields.map((a) => a.type), ...plan.openTypes.map((o) => o.type)]);
+  const untouched = wanted.metaobjects.length - touchedTypes.size + wanted.metafields.length - plan.createFields.length - plan.openAccess.length;
   log(`  = ${untouched} definition(s) already right`);
   return { typeIds };
 }
