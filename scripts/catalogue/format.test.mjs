@@ -94,3 +94,8 @@ test("a reference metafield names its entries in refs, and they must exist", () 
     "d: metafield main holds one reference, refs has 2",
   ]);
 });
+
+test("refs on a metafield that is not a reference type is a problem", () => {
+  const c = catalog([product({ metafields: [{ namespace: "custom", key: "seats", type: "number_integer", value: "3", refs: ["color_swatch/grey"] }] })]);
+  assert.match(problems(c), /chair: metafield seats has refs but is not a reference type/);
+});

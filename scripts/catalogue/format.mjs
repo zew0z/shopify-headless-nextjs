@@ -48,6 +48,9 @@ export function validateCatalog({ collections = [], products = [], metaobjects =
 
     for (const metafield of product.metafields ?? []) {
       if (!metafield.namespace || !metafield.key || !metafield.type) problems.push(`${id}: metafield needs namespace, key and type`);
+      if (metafield.refs != null && !/metaobject_reference$/.test(metafield.type ?? "")) {
+        problems.push(`${id}: metafield ${metafield.key} has refs but is not a reference type`);
+      }
       if (/metaobject_reference$/.test(metafield.type ?? "")) {
         if (!Array.isArray(metafield.refs) || !metafield.refs.length) {
           problems.push(`${id}: metafield ${metafield.key} is a reference, so it needs refs: ["<type>/<handle>"] instead of a value`);

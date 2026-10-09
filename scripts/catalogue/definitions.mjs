@@ -79,10 +79,17 @@ export function wantedDefinitions(catalog, { wantsReviews = false } = {}) {
       }
       if (!seen) {
         fields.set(id, { ownerType: "PRODUCT", namespace: mf.namespace, key: mf.key, name: humanise(mf.key), type: mf.type, ...(refType[0] && { refType: refType[0] }) });
+      } else if (refType.length === 1) {
+        if (!seen.refType) seen.refType = refType[0];
+        else if (seen.refType !== refType[0]) {
+          const message = `${id} is declared as ${seen.refType} but its refs point at ${refType[0]}`;
+          if (!problems.includes(message)) problems.push(message);
+        }
       }
     }
   }
   for (const [id, def] of fields) {
+    if (isReference(def.type) && !def.refType) problems.push(`${id} is a reference field: give it refType or refs`);
     if (def.refType && !types.has(def.refType)) problems.push(`${id} refers to type "${def.refType}", which no definition declares`);
   }
   return { metaobjects, metafields: [...fields.values()], problems };

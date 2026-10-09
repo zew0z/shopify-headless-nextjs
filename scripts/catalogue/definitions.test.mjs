@@ -49,6 +49,31 @@ test("a reference metafield takes its target type from its refs", () => {
   assert.deepEqual(metaobjects.map((d) => d.type), ["hero_slide", "color_swatch"]);
 });
 
+const swatchType = { type: "color_swatch", name: "Colour", displayNameKey: "label", fieldDefinitions: [{ key: "label", name: "Label", type: "single_line_text_field", required: true }] };
+
+test("a declared reference field takes its target type from the products' refs", () => {
+  const catalog = {
+    definitions: { metaobjects: [swatchType], metafields: [{ namespace: "custom", key: "color", type: "list.metaobject_reference" }] },
+    products: [product([{ namespace: "custom", key: "color", type: "list.metaobject_reference", refs: ["color_swatch/grey"] }])],
+  };
+  const { metafields, problems } = wantedDefinitions(catalog, {});
+  assert.deepEqual(problems, []);
+  assert.equal(metafields[0].refType, "color_swatch");
+});
+
+test("a declared refType that differs from the refs is a problem", () => {
+  const catalog = {
+    definitions: { metaobjects: [swatchType], metafields: [{ namespace: "custom", key: "color", type: "list.metaobject_reference", refType: "hero_slide" }] },
+    products: [product([{ namespace: "custom", key: "color", type: "list.metaobject_reference", refs: ["color_swatch/grey"] }])],
+  };
+  assert.match(wantedDefinitions(catalog, {}).problems.join("\n"), /custom\.color is declared as hero_slide but its refs point at color_swatch/);
+});
+
+test("a declared reference field with neither refType nor refs is a problem", () => {
+  const catalog = { definitions: { metafields: [{ namespace: "custom", key: "color", type: "list.metaobject_reference" }] }, products: [] };
+  assert.match(wantedDefinitions(catalog, {}).problems.join("\n"), /custom\.color is a reference field: give it refType or refs/);
+});
+
 test("refs to a type nobody defined are a problem", () => {
   const catalog = { products: [product([{ namespace: "custom", key: "color", type: "list.metaobject_reference", refs: ["color_swatch/grey"] }])] };
   assert.match(wantedDefinitions(catalog, {}).problems.join("\n"), /custom\.color refers to type "color_swatch", which no definition declares/);
