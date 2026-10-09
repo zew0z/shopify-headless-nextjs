@@ -641,7 +641,7 @@ export const pageQuery = /* GraphQL */ `
 /** Content entries of one type (Content > Metaobjects in the admin). Unknown types return no nodes. */
 export const metaobjectsQuery = /* GraphQL */ `
   query GetMetaobjects($type: String!, $first: Int!) {
-    metaobjects(type: $type, first: $first) {
+    metaobjects(type: $type, first: $first, sortKey: "updated_at", reverse: true) {
       nodes {
         handle
         updatedAt

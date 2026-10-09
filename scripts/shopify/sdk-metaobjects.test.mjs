@@ -78,3 +78,10 @@ test("referenced entries (a swatch list) come back with their fields", async () 
   const [x] = await sdk.getMetaobjects("anything");
   assert.deepEqual(x.fields.colors.entries, [{ handle: "grey", fields: { label: "Grey", hex: "#888" } }]);
 });
+
+test("entries are asked for most recently saved first, so a long list never drops the newest", async () => {
+  answer([]);
+  await sdk.getMetaobjects("customer_review", { first: 250 });
+  assert.match(sent.query, /sortKey:\s*"updated_at"/);
+  assert.match(sent.query, /reverse:\s*true/);
+});

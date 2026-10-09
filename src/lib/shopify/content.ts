@@ -51,14 +51,17 @@ export async function getMetaobjects(type: string, { first = 50 }: { first?: num
 /**
  * Reviews the owner entered under Content > Metaobjects > Customer review.
  * The Storefront API cannot filter entries by field, so one product's reviews
- * are picked from the newest 250.
+ * are picked from the 250 most recently saved.
  */
 export async function getReviews({ product, first = 250 }: { product?: string; first?: number } = {}): Promise<Review[]> {
   const reviews = (await getMetaobjects("customer_review", { first })).map(toReview).filter((r): r is Review => r !== null);
   return sortReviews(product ? reviews.filter((r) => r.product?.handle === product) : reviews);
 }
 
-/** Hero slides from Content > Metaobjects > Hero slide. Empty when the owner made none: hide the hero. */
+/**
+ * Hero slides from Content > Metaobjects > Hero slide. Empty when the owner made none: hide the hero.
+ * Reads at most 20 slides (a hero never needs more), most recently saved first, then sorts by the owner's order.
+ */
 export async function getHeroSlides(): Promise<HeroSlide[]> {
   return sortHeroSlides(await getMetaobjects("hero_slide", { first: 20 }));
 }
