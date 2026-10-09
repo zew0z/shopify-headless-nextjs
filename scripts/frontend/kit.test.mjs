@@ -21,7 +21,7 @@ test("a root-layout repo gets the SDK in lib/shopify and routes that need no @/ 
   assert.ok(to.includes("lib/shopify/client.ts"));
   assert.ok(to.includes("lib/shopify/cart-store.ts"));
   assert.ok(to.includes("lib/shopify/cart-provider.tsx"));
-  for (const r of ["cart", "revalidate", "health", "search"]) {
+  for (const r of ["cart", "revalidate", "health", "search", "contact"]) {
     const route = plan.write.find((w) => w.to === `app/api/${r}/route.ts`);
     assert.ok(route, `${r} route missing`);
     assert.doesNotMatch(route.text, /@\//, `${r} route still uses @/`);

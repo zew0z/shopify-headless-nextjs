@@ -4,7 +4,7 @@ import { findSdkDir } from "../shopify/sdk-dir.mjs";
 import { ERROR_PAGE, GLOBAL_ERROR_PAGE } from "./templates.mjs";
 
 // Paths under app/api/. "[version]/graphql.json" is the Storefront API proxy Shopify's privacy script needs.
-const ROUTES = ["cart", "revalidate", "health", "search", "[version]/graphql.json", "shopify/analytics/config"];
+const ROUTES = ["cart", "revalidate", "health", "search", "contact", "[version]/graphql.json", "shopify/analytics/config"];
 const COPIED_AS_IS = [
   "playwright.config.mjs",
   "store-setup.config.example.json",
