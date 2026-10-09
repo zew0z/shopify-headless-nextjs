@@ -42,6 +42,19 @@ test("package.json keeps its scripts, its order and its 4-space indent", () => {
   assert.ok(text.endsWith("}\n"));
 });
 
+test("an npm repo gets the scripts but no dependencies, so package.json and package-lock.json stay in sync", () => {
+  const target = received({ "package-lock.json": '{ "lockfileVersion": 3 }\n' });
+  const plan = planKitInstall({ kitRoot, target, appRoot: "" });
+  applyKitInstall(plan, target, notes);
+  const pkg = JSON.parse(read(target, "package.json"));
+  assert.deepEqual(Object.keys(pkg.scripts), ["dev", "build", "shop-setup", "test:scripts", "test:e2e"]);
+  assert.deepEqual(pkg.dependencies, { next: "16.2.0" });
+  assert.equal(pkg.devDependencies, undefined);
+  assert.equal(read(target, "package-lock.json"), '{ "lockfileVersion": 3 }\n');
+  assert.equal(existsSync(path.join(target, "pnpm-workspace.yaml")), false);
+  assert.match(plan.packageJson.installCommand, /^npm install --save-dev /);
+});
+
 test(".gitignore and AGENTS.md gain the kit's lines", () => {
   const target = received();
   applyKitInstall(planKitInstall({ kitRoot, target, appRoot: "" }), target, notes);

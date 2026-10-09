@@ -162,6 +162,49 @@ export const productFragment = /* GraphQL */ `
   ${imageFragment}
 `;
 
+/** What a metafield read selects: the value, and the content entries a reference field points at. */
+const metafieldSelection = /* GraphQL */ `
+  namespace
+  key
+  type
+  value
+  reference {
+    __typename
+    ... on Metaobject {
+      handle
+      fields { key value }
+    }
+  }
+  references(first: 25) {
+    nodes {
+      __typename
+      ... on Metaobject {
+        handle
+        fields { key value }
+      }
+    }
+  }
+`;
+
+/**
+ * Extras a list read asks for: the fields named in $metafields, and the product's
+ * collections when $withCollections. Only valid in a document that declares
+ * $metafields: [HasMetafieldsIdentifier!]! and $withCollections: Boolean!.
+ */
+export const productListExtrasFragment = /* GraphQL */ `
+  fragment ProductListExtras on Product {
+    metafields(identifiers: $metafields) {
+      ${metafieldSelection}
+    }
+    collections(first: 10) @include(if: $withCollections) {
+      nodes {
+        handle
+        title
+      }
+    }
+  }
+`;
+
 export const collectionFragment = /* GraphQL */ `
   fragment CollectionFragment on Collection {
     id
@@ -323,6 +366,8 @@ export const getProductsQuery = /* GraphQL */ `
     $query: String
     $sortKey: ProductSortKeys = RELEVANCE
     $reverse: Boolean = false
+    $metafields: [HasMetafieldsIdentifier!]! = []
+    $withCollections: Boolean! = false
   ) {
     products(first: $first, after: $after, query: $query, sortKey: $sortKey, reverse: $reverse) {
       pageInfo {
@@ -335,11 +380,12 @@ export const getProductsQuery = /* GraphQL */ `
         cursor
         node {
           ...ProductFragment
+          ...ProductListExtras
         }
       }
     }
   }
-  ${productFragment}
+  ${dedupeFragments(productFragment + productListExtrasFragment)}
 `;
 
 export const getProductByHandleQuery = /* GraphQL */ `
@@ -386,26 +432,7 @@ export const getProductByHandleQuery = /* GraphQL */ `
         }
       }
       metafields(identifiers: $metafields) {
-        namespace
-        key
-        type
-        value
-        reference {
-          __typename
-          ... on Metaobject {
-            handle
-            fields { key value }
-          }
-        }
-        references(first: 25) {
-          nodes {
-            __typename
-            ... on Metaobject {
-              handle
-              fields { key value }
-            }
-          }
-        }
+        ${metafieldSelection}
       }
     }
   }
@@ -471,6 +498,8 @@ export const getCollectionProductsQuery = /* GraphQL */ `
     $sortKey: ProductCollectionSortKeys = COLLECTION_DEFAULT
     $reverse: Boolean = false
     $filters: [ProductFilter!]
+    $metafields: [HasMetafieldsIdentifier!]! = []
+    $withCollections: Boolean! = false
   ) {
     collection(handle: $handle) {
       products(first: $first, after: $after, sortKey: $sortKey, reverse: $reverse, filters: $filters) {
@@ -487,12 +516,13 @@ export const getCollectionProductsQuery = /* GraphQL */ `
           cursor
           node {
             ...ProductFragment
+            ...ProductListExtras
           }
         }
       }
     }
   }
-  ${dedupeFragments(productFragment + filterFragment)}
+  ${dedupeFragments(productFragment + productListExtrasFragment + filterFragment)}
 `;
 
 export const searchProductsQuery = /* GraphQL */ `
@@ -503,6 +533,8 @@ export const searchProductsQuery = /* GraphQL */ `
     $sortKey: SearchSortKeys = RELEVANCE
     $reverse: Boolean = false
     $filters: [ProductFilter!]
+    $metafields: [HasMetafieldsIdentifier!]! = []
+    $withCollections: Boolean! = false
   ) {
     search(query: $query, first: $first, after: $after, sortKey: $sortKey, reverse: $reverse, types: [PRODUCT], productFilters: $filters, unavailableProducts: LAST) {
       totalCount
@@ -521,12 +553,13 @@ export const searchProductsQuery = /* GraphQL */ `
           __typename
           ... on Product {
             ...ProductFragment
+            ...ProductListExtras
           }
         }
       }
     }
   }
-  ${dedupeFragments(productFragment + filterFragment)}
+  ${dedupeFragments(productFragment + productListExtrasFragment + filterFragment)}
 `;
 
 export const predictiveSearchQuery = /* GraphQL */ `

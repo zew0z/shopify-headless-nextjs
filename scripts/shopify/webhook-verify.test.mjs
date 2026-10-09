@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { verifyShopifyWebhook } from "../../src/lib/shopify/webhook.ts";
+import { loadSdk } from "../test-support/load-sdk.mjs";
+
+const { verifyShopifyWebhook } = await loadSdk("webhook");
 
 const secret = "client-secret";
 const body = JSON.stringify({ id: 1, handle: "milano-sofa" });

@@ -14,7 +14,7 @@ export const STEPS = [
     owner: "code",
     needs: [],
     instructions:
-      "From the kit repo: pnpm shop-setup frontend-audit <path to the received repo>. Tell the owner in plain words what it found: how many hardcoded products and where, fake product APIs, the cart and its checkout button, pages that switch caching off, data typed into the site that Shopify should supply (menus, policy text, store claims), invented fields (ratings, stock counts, badges) and card forms. If it says Stop, do not install anything: tell the owner why and ask whether to move the frontend to Next.js with the App Router (a separate job). Never half-wire a frontend the kit does not support.",
+      "From the kit repo: pnpm shop-setup frontend-audit <path to the received repo>. Tell the owner in plain words what it found: how many hardcoded products and where, fake product APIs, the cart and its checkout button, pages that switch caching off, data typed into the site that Shopify should supply (menus, policy text, store claims), invented fields (ratings, stock counts, badges), card forms, and the payment and delivery choices typed into the old checkout (copy those into the owner list before the checkout page goes: they are recreated in Shopify in steps payments, cod-payment and local-pickup). If it says Stop, do not install anything: tell the owner why and ask whether to move the frontend to Next.js with the App Router (a separate job). Never half-wire a frontend the kit does not support.",
     automation: "frontend-audit",
   },
   {
@@ -32,7 +32,7 @@ export const STEPS = [
     owner: "code",
     needs: ["kit-install"],
     instructions:
-      "Follow docs/frontend-wiring.md, sections Catalogue, Product page and Header, footer, policies and pages. Keep their components and their product type: write one mapper from the SDK's Product to their type, read products and collections with the SDK in server components, pass the mapped data down. Lists use the paged reads (getProductsPage, getCollectionProductsPage, searchProducts) with Shopify's own filters, never a filter over the whole catalogue in memory; the product page gets extra fields from getProduct(handle, { metafields }); menus, policies and info pages come from getMenu, menuLinks, getPolicies and getPage. Reviews come from getReviews (only when wantsReviews is true) and the hero from getHeroSlides; the contact form and newsletter post to /api/contact; page metadata uses productMetadata and collectionMetadata. Fields Shopify still does not have (made-up was-prices, announcement bar) are hidden and listed for the owner, never invented. Remove anything that switches caching off on pages that show products, and allow cdn.shopify.com in next.config images. Done when the code is in and builds against mock.shop or the development store.",
+      "Follow docs/frontend-wiring.md, sections Catalogue, Product page and Header, footer, policies and pages. Keep their components and their product type: write one mapper from the SDK's Product to their type, read products and collections with the SDK in server components, pass the mapped data down. Lists use the paged reads (getProductsPage, getCollectionProductsPage, searchProducts) with Shopify's own filters, never a filter over the whole catalogue in memory; the product page gets extra fields from getProduct(handle, { metafields }); menus, policies and info pages come from getMenu, menuLinks, getPolicies and getPage. Reviews come from getReviews (only when wantsReviews is true), the hero from getHeroSlides, and the address, phones, opening hours, delivery terms, bank details and FAQ from getStoreProfile and getFaq; the contact form and newsletter post to /api/contact; page metadata uses productMetadata and collectionMetadata. Fields Shopify still does not have (made-up was-prices, announcement bar) are hidden and listed for the owner, never invented. Remove anything that switches caching off on pages that show products, and allow cdn.shopify.com in next.config images. Done when the code is in and builds against mock.shop or the development store.",
   },
   {
     id: "frontend-cart",
@@ -57,7 +57,7 @@ export const STEPS = [
     owner: "human",
     needs: [],
     instructions:
-      "Ask the business decisions once, as concrete choices, and write the answers to store-setup.config.json (see store-setup.config.example.json): tax-inclusive prices, stock tracking, shipping rates and free-shipping threshold, whether compare-at prices are real, reviews, invoicing. Do not ask anything in this file again later.",
+      "Ask the business decisions once, as concrete choices, and write the answers to store-setup.config.json (see store-setup.config.example.json): tax-inclusive prices, stock tracking, shipping rates and free-shipping threshold, whether compare-at prices are real, reviews, invoicing. Do not ask anything in this file again later. When delivery is priced case by case (agreed by phone), use a rate with price 0 whose name says so, for example \"Delivery cost agreed by phone\", and put the terms in the shop details' delivery note. Shipping by region inside one country needs Shopify's province codes for that country: unverified for Greece, check on the development store before promising it.",
     verify: "pnpm shop-setup preflight --config-only",
   },
   {
@@ -154,8 +154,15 @@ export const STEPS = [
     title: "Create shipping zones and rates, including the free-shipping rule",
     owner: "api",
     needs: ["preflight", "intake"],
-    instructions: "Run pnpm shop-setup shipping --dry-run, show the plan, then pnpm shop-setup shipping. Refuses if the zone would collide with an existing one.",
+    instructions: "Run pnpm shop-setup shipping --dry-run, show the plan, then pnpm shop-setup shipping. Refuses if the zone would collide with an existing one. Before the store is connected the dry run prints the zone from the config alone and says it was not checked against the store.",
     automation: "shipping",
+  },
+  {
+    id: "local-pickup",
+    title: "Offer collection from the shop or showroom (optional)",
+    owner: "browser",
+    needs: ["shipping"],
+    instructions: `Only if the owner lets customers collect orders; otherwise pnpm shop-setup done local-pickup "n/a: no pickup". Settings > Shipping and delivery > Local pickup > the location > This location offers local pickup; set the pickup message (for example when to come). Shopify's checkout then offers pickup at no charge. The Admin API has locationLocalPickupEnable (UNVERIFIED); use the admin. Done when a test checkout offers pickup. ${FALLBACK}`,
   },
   {
     id: "catalogue",
@@ -172,8 +179,16 @@ export const STEPS = [
     owner: "api",
     needs: ["preflight", "intake"],
     instructions:
-      "Run pnpm shop-setup definitions --dry-run, show the owner the list, then pnpm shop-setup definitions. It creates the Hero slide type (and Customer review when wantsReviews is true) and a storefront-readable definition for every product field the catalogue sets. The catalogue push runs it too. Tell the owner: hero slides and reviews are entered in the admin under Content > Metaobjects; an empty list hides that part of the site. New slides and reviews show on the site within the hour (the site keeps content for an hour; no webhook refreshes it). Save each entry with status Active.",
+      "Run pnpm shop-setup definitions --dry-run, show the owner the list, then pnpm shop-setup definitions. It creates the Hero slide, Shop details and FAQ types (and Customer review when wantsReviews is true) and a storefront-readable definition for every product field the catalogue sets. The catalogue push runs it too. Tell the owner: hero slides and reviews are entered in the admin under Content > Metaobjects; an empty list hides that part of the site. New slides and reviews show on the site within the hour (the site keeps content for an hour; no webhook refreshes it). Save each entry with status Active.",
     automation: "definitions",
+  },
+  {
+    id: "shop-details",
+    title: "Fill in the shop details and FAQ in Shopify",
+    owner: "human",
+    needs: ["content-types"],
+    instructions:
+      "In the Shopify admin, Content > Metaobjects > Shop details: add one entry with the business name, address, phones, email, opening hours, map link and, if the site shows them, the delivery terms, a price note (for example VAT included) and the bank-transfer details. Then Content > Metaobjects > FAQ, one entry per question. Each entry must be Active. The frontend reads them with getStoreProfile() and getFaq(); anything left blank stays hidden, and changes show within the hour. The agent never types these into the code. If the site shows neither: pnpm shop-setup done shop-details \"n/a: the site shows no shop details or FAQ\".",
   },
   {
     id: "inventory",
@@ -331,7 +346,8 @@ export const STEPS = [
     title: "Activate payments",
     owner: "human",
     needs: ["store-basics"],
-    instructions: "Settings > Payments. Needs identity, bank details and tax number; only the owner can do this. The agent never enters these.",
+    instructions:
+      "Settings > Payments. Needs identity, bank details and tax number; only the owner can do this. The agent never enters these. Recreate every payment choice the audit listed from the old checkout. Bank transfer is a manual payment method (Settings > Payments > Manual payment methods > Bank deposit), with the IBAN in its instructions. IRIS needs a Greek payment provider that offers it: ask the owner which.",
   },
   {
     id: "cod-payment",
@@ -339,7 +355,7 @@ export const STEPS = [
     owner: "human",
     needs: ["payments"],
     instructions:
-      "If the shop does not offer cash on delivery: pnpm shop-setup done cod-payment \"n/a: not offered\". Otherwise Settings > Payments > Payment providers, add Cash on Delivery (COD) from the suggested manual payment methods, write the instructions customers see, activate it. Per Shopify's docs orders stay unpaid until the owner marks them paid after collecting the cash, so someone must do that every day.",
+      "If the shop does not offer cash on delivery: pnpm shop-setup done cod-payment \"n/a: not offered\". Otherwise Settings > Payments > Payment providers, add Cash on Delivery (COD) from the suggested manual payment methods, write the instructions customers see, activate it. Per Shopify's docs orders stay unpaid until the owner marks them paid after collecting the cash, so someone must do that every day. Shopify has no built-in fee for cash on delivery (UNVERIFIED: check Settings > Payments). If the old checkout charged one, ask the owner: drop the fee, add it to the delivery rate, or use an app.",
   },
   {
     id: "invoicing",
@@ -375,7 +391,7 @@ export const STEPS = [
     id: "go-live",
     title: "Final check before telling anyone the shop is ready",
     owner: "human",
-    needs: ["sdk-queries", "test-order", "rotate-secrets", "legal-details", "withdrawal-button", "cookie-consent", "hosting", "catalogue", "inventory", "courier", "cod-payment", "eu-vat", "customer-accounts", "staff-alerts", "languages", "search-console", "live-view", "policies-approve"],
+    needs: ["sdk-queries", "test-order", "rotate-secrets", "legal-details", "withdrawal-button", "cookie-consent", "hosting", "catalogue", "inventory", "courier", "cod-payment", "local-pickup", "eu-vat", "customer-accounts", "staff-alerts", "languages", "search-console", "live-view", "policies-approve", "shop-details"],
     instructions:
       "Run pnpm shop-setup status: every step must be done, or marked done with an n/a reason. Read the list of n/a reasons back to the owner. Only then say the shop is ready.",
   },

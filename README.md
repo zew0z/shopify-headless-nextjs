@@ -60,9 +60,11 @@ flowchart TD
 
 5. **Paged Reads & Filters**:
    - `getProductsPage`, `getCollectionProductsPage` and `searchProducts` return `{ products, pageInfo, filters }`, so lists page with a cursor and filter in Shopify, not in memory. `getCollectionProductsPage` returns `null` for a missing collection, and `getProductsPage` has no filters. `getProductStock` reads per-variant stock when the token has the inventory scope.
+   - Every list read takes optional `metafields` (fields per product, with the content entries a reference field points at, as `getProduct` returns them) and `withCollections` (the first 10 collections of each product). Without them the lists ask for neither.
 
 6. **Store Content Reads**:
    - `getShop`, `getMenu`, `getPolicies`, `getPolicy` and `getPage` read the shop name, menus, legal policies and info pages from Shopify (cached an hour); `menuLinks` turns menu URLs into site paths.
+   - `getStoreProfile` and `getFaq` read the shop details (address, phones, opening hours, bank details...) and FAQ the owner enters under Content > Metaobjects. `getStoreProfile` is `null` and `getFaq` is `[]` until the owner fills them in. `getHeroSlides`, `getReviews` and `getMetaobjects` read the other content types.
 
 7. **Drop-in Cart**:
    - `CartProvider` and `useCart()` give a client cart that runs one change at a time, recovers when Shopify drops the cart, and keeps the cart on error. `variants.ts` picks a variant from a shopper's choices.
@@ -88,9 +90,10 @@ src/
     ├── cart-store.ts           # The cart's logic without React (one change at a time)
     ├── client.ts               # Resilient fetch client (rate limits, backoff, IP)
     ├── config.ts               # Env validation, domain sanitization & fallbacks
-    ├── content.ts              # Shop, menus, policies and pages (cached an hour)
+    ├── content.ts              # Shop, menus, policies, pages, shop details, FAQ, hero, reviews (cached an hour)
     ├── index.ts                # Master SDK exports
     ├── menu.ts                 # menuLinks: Shopify menu URLs as site paths
+    ├── metaobjects.ts          # Content entries mapped to typed shop details, FAQ, hero slides, reviews
     ├── money.ts                # formatMoney: a price in the currency Shopify returned
     ├── mutations.ts            # Complete GraphQL cart & gift card mutations
     ├── queries.ts              # Catalog, collections, content & predictive search queries
@@ -176,6 +179,8 @@ pnpm shop-setup frontend-audit ../their-frontend   # what it is, where its produ
 pnpm shop-setup kit-install ../their-frontend --dry-run
 pnpm shop-setup kit-install ../their-frontend       # never overwrites; stops on any conflict
 ```
+
+kit-install follows the received repo's setup: it keeps `@/lib/shopify` imports where the repo has the `@/*` alias, adds starter `policies/[handle]` and `pages/[handle]` routes that read Shopify where the frontend has none, and in an npm repo prints the `npm install` command instead of editing dependencies, so `package-lock.json` stays in step. A frontend that already has Shopify code is not migrated automatically: the audit names that code, and its `lib/shopify` is moved aside before installing.
 
 Then, inside their repo, wire it with [`docs/frontend-wiring.md`](docs/frontend-wiring.md) and prove it with `pnpm shop-setup frontend-check`. The agent's manual is [`.claude/skills/shopify-connect-frontend/SKILL.md`](.claude/skills/shopify-connect-frontend/SKILL.md).
 

@@ -1,5 +1,5 @@
 import { adminGraphQL } from "../shopify/admin-client.mjs";
-import { bad, info, ok } from "../shopify/env.mjs";
+import { bad, info, ok, shopifyEnv, warn } from "../shopify/env.mjs";
 
 const money = (n, currencyCode) => ({ amount: n.toFixed(2), currencyCode });
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -82,8 +82,17 @@ const UPDATE = `
  * Refuses on a country collision rather than duplicate or overwrite: the person
  * decides what happens to a zone they or Shopify already created.
  * UNVERIFIED until run against a development store (Step 1 and Task 8).
+ * A dry run with no store configured prints the zone from the config alone and
+ * calls nothing, so the plan can be shown before the store exists.
  */
-export async function applyShipping({ config, dryRun = false, locationId } = {}) {
+export async function applyShipping({ config, dryRun = false, locationId, env = shopifyEnv() } = {}) {
+  if (dryRun && !env.domain) {
+    const zone = buildZone(config);
+    info(JSON.stringify(zone, null, 2));
+    warn("no SHOPIFY_STORE_DOMAIN: not checked against the store's existing zones and locations");
+    ok("dry run, nothing written");
+    return { offline: true, zone };
+  }
   const data = await adminGraphQL(DISCOVERY);
   const active = data.locations.nodes.filter((l) => l.isActive);
   const location = locationId ? active.find((l) => l.id === locationId) : active.length === 1 ? active[0] : null;

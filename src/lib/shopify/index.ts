@@ -187,6 +187,22 @@ export async function checkShopifyConnection(): Promise<ConnectionHealthCheck> {
 
 type Edges<T> = { pageInfo: PageInfo; edges: Array<{ node: T }>; filters?: Filter[] };
 
+type RawMetafield = Metafield & { reference?: RawLinked | null; references?: { nodes: RawLinked[] } | null };
+type RawProduct = Omit<Product, "metafields"> & { metafields?: Array<RawMetafield | null> };
+
+/** Metafields as getProduct returns them: reference fields carry the content entries they point at. A product sent without metafields is returned as it came. */
+function withEntries({ metafields, ...product }: RawProduct): Product {
+  if (!metafields) return product;
+  return {
+    ...product,
+    metafields: metafields.map((m) => {
+      if (!m) return null;
+      const { reference, references, ...rest } = m;
+      return { ...rest, entries: toLinkedEntries(reference, references) };
+    }),
+  };
+}
+
 /**
  * Fetches a list of products with optional query filtering, sorting, and pagination.
  *
@@ -201,7 +217,7 @@ export async function getProducts(options?: GetProductsOptions): Promise<Product
 export async function getProductsPage(options?: GetProductsOptions): Promise<ProductPage> {
   requireShopify();
 
-  const res = await shopifyFetch<{ products: Edges<Product> }>({
+  const res = await shopifyFetch<{ products: Edges<RawProduct> }>({
     query: getProductsQuery,
     variables: {
       first: options?.limit || 20,
@@ -209,6 +225,8 @@ export async function getProductsPage(options?: GetProductsOptions): Promise<Pro
       query: options?.query,
       sortKey: options?.sortKey || "RELEVANCE",
       reverse: options?.reverse || false,
+      metafields: options?.metafields ?? [],
+      withCollections: options?.withCollections ?? false,
     },
     cache: options?.cache ?? CATALOGUE_CACHE,
     tags: ["products"],
@@ -216,7 +234,7 @@ export async function getProductsPage(options?: GetProductsOptions): Promise<Pro
   });
 
   const conn = dataOrThrow(res.body.data).products;
-  return { products: conn.edges.map((e) => e.node), pageInfo: conn.pageInfo, filters: [] };
+  return { products: conn.edges.map((e) => withEntries(e.node)), pageInfo: conn.pageInfo, filters: [] };
 }
 
 /**
@@ -232,7 +250,7 @@ export async function searchProducts(options: SearchProductsOptions): Promise<Pr
   const cache = options.cache ?? CATALOGUE_CACHE;
 
   const res = await shopifyFetch<{
-    search: { totalCount: number; pageInfo: PageInfo; productFilters: Filter[]; edges: Array<{ node: Product & { __typename: string } }> };
+    search: { totalCount: number; pageInfo: PageInfo; productFilters: Filter[]; edges: Array<{ node: RawProduct & { __typename: string } }> };
   }>({
     query: searchProductsQuery,
     variables: {
@@ -242,6 +260,8 @@ export async function searchProducts(options: SearchProductsOptions): Promise<Pr
       sortKey: options.sortKey || "RELEVANCE",
       reverse: options.reverse || false,
       filters: options.filters,
+      metafields: options.metafields ?? [],
+      withCollections: options.withCollections ?? false,
     },
     cache,
     tags: ["products"],
@@ -251,7 +271,7 @@ export async function searchProducts(options: SearchProductsOptions): Promise<Pr
 
   const s = dataOrThrow(res.body.data).search;
   return {
-    products: s.edges.map((e) => e.node).filter((n) => n.__typename === "Product"),
+    products: s.edges.map((e) => e.node).filter((n) => n.__typename === "Product").map(withEntries),
     pageInfo: s.pageInfo,
     filters: s.productFilters,
     totalCount: s.totalCount,
@@ -270,10 +290,7 @@ export async function getProduct(
 ): Promise<Product | null> {
   requireShopify();
 
-  type RawMetafield = Metafield & { reference?: RawLinked | null; references?: { nodes: RawLinked[] } | null };
-  const res = await shopifyFetch<{
-    product: (Omit<Product, "metafields"> & { metafields?: Array<RawMetafield | null> }) | null;
-  }>({
+  const res = await shopifyFetch<{ product: RawProduct | null }>({
     query: getProductByHandleQuery,
     variables: { handle, metafields: options?.metafields ?? [] },
     cache: options?.cache ?? CATALOGUE_CACHE,
@@ -282,15 +299,7 @@ export async function getProduct(
   });
 
   const product = res.body.data?.product;
-  if (!product) return null;
-  return {
-    ...product,
-    metafields: product.metafields?.map((m) => {
-      if (!m) return null;
-      const { reference, references, ...rest } = m;
-      return { ...rest, entries: toLinkedEntries(reference, references) };
-    }),
-  };
+  return product ? withEntries(product) : null;
 }
 
 /**
@@ -437,7 +446,7 @@ export async function getCollectionProducts(options: GetCollectionProductsOption
 export async function getCollectionProductsPage(options: GetCollectionProductsOptions): Promise<ProductPage | null> {
   requireShopify();
 
-  const res = await shopifyFetch<{ collection: { products: Edges<Product> } | null }>({
+  const res = await shopifyFetch<{ collection: { products: Edges<RawProduct> } | null }>({
     query: getCollectionProductsQuery,
     variables: {
       handle: options.handle,
@@ -446,6 +455,8 @@ export async function getCollectionProductsPage(options: GetCollectionProductsOp
       sortKey: options.sortKey || "COLLECTION_DEFAULT",
       reverse: options.reverse || false,
       filters: options.filters,
+      metafields: options.metafields ?? [],
+      withCollections: options.withCollections ?? false,
     },
     cache: options.cache ?? CATALOGUE_CACHE,
     tags: ["collections", `collection-${options.handle}`, "products"],
@@ -454,7 +465,7 @@ export async function getCollectionProductsPage(options: GetCollectionProductsOp
 
   const conn = dataOrThrow(res.body.data).collection?.products;
   if (!conn) return null;
-  return { products: conn.edges.map((e) => e.node), pageInfo: conn.pageInfo, filters: conn.filters ?? [] };
+  return { products: conn.edges.map((e) => withEntries(e.node)), pageInfo: conn.pageInfo, filters: conn.filters ?? [] };
 }
 
 // -------------------------------------------------------------

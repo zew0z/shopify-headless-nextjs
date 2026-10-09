@@ -146,8 +146,10 @@ export interface Product {
   /** Product page only (getProduct): subscriptions and extra fields. */
   requiresSellingPlan?: boolean;
   sellingPlanGroups?: { nodes: SellingPlanGroup[] };
-  /** In the order getProduct was asked for them; null where the product has none. */
+  /** In the order getProduct (or a list read's `metafields` option) asked for them; null where the product has none. */
   metafields?: Array<Metafield | null>;
+  /** List reads with withCollections only: the first 10 collections the product is in. */
+  collections?: { nodes: Array<{ handle: string; title: string }> };
   seo?: {
     title: string | null;
     description: string | null;
@@ -173,6 +175,10 @@ export interface GetProductsOptions {
   language?: string;
   cache?: RequestCache;
   revalidate?: number;
+  /** Extra fields to read for every product in the list, each with its linked entries (like getProduct). */
+  metafields?: MetafieldIdentifier[];
+  /** Also read each product's collections (product.collections). */
+  withCollections?: boolean;
 }
 
 // -------------------------------------------------------------
@@ -225,6 +231,10 @@ export interface SearchProductsOptions {
   filters?: ProductFilterInput[];
   cache?: RequestCache;
   revalidate?: number;
+  /** Extra fields to read for every product in the list, each with its linked entries (like getProduct). */
+  metafields?: MetafieldIdentifier[];
+  /** Also read each product's collections (product.collections). */
+  withCollections?: boolean;
 }
 
 // -------------------------------------------------------------
@@ -277,6 +287,10 @@ export interface GetCollectionProductsOptions {
   filters?: ProductFilterInput[];
   cache?: RequestCache;
   revalidate?: number;
+  /** Extra fields to read for every product in the list, each with its linked entries (like getProduct). */
+  metafields?: MetafieldIdentifier[];
+  /** Also read each product's collections (product.collections). */
+  withCollections?: boolean;
 }
 
 // -------------------------------------------------------------
@@ -500,3 +514,24 @@ export interface MetaobjectField { value: string | null; image: ShopifyImage | n
 export interface MetaobjectEntry { handle: string; updatedAt: string; fields: Record<string, MetaobjectField> }
 export interface Review { handle: string; author: string; rating: number; body: string; location: string | null; date: string | null; product: EntryProduct | null }
 export interface HeroSlide { handle: string; title: string; subtitle: string | null; image: ShopifyImage; href: string | null; product: EntryProduct | null }
+
+/** The shop details the owner fills in under Content > Metaobjects > Shop details (getStoreProfile). A blank field is null or []: hide it. */
+export interface StoreProfile {
+  legalName: string;
+  address: string | null;
+  phones: string[];
+  email: string | null;
+  /** One line each, as the owner wrote them. */
+  openingHours: string[];
+  mapUrl: string | null;
+  foundedYear: number | null;
+  /** Delivery terms the site shows, for example "delivery cost agreed by phone". */
+  deliveryNote: string | null;
+  /** For example "VAT included". */
+  priceNote: string | null;
+  /** Bank-transfer details; null without an IBAN. */
+  bank: { beneficiary: string | null; iban: string } | null;
+}
+
+/** One question from Content > Metaobjects > FAQ (getFaq). */
+export interface FaqItem { handle: string; question: string; answer: string }

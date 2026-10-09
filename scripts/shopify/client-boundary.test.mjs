@@ -6,7 +6,7 @@ import { findSdkDir } from "./sdk-dir.mjs";
 
 // These files run in the browser, so they must not pull in anything that reads server-only settings.
 const BROWSER_SAFE = [
-  "cart-store.ts", "cart-provider.tsx", "variants.ts", "menu.ts", "money.ts",
+  "cart-store.ts", "cart-provider.tsx", "variants.ts", "menu.ts", "money.ts", "metaobjects.ts",
   "analytics-events.ts", "privacy.ts", "analytics-tracker.ts", "analytics.tsx",
   "analytics-policy.ts", "analytics-browser.ts", "analytics-script-loader.ts",
 ];

@@ -95,6 +95,29 @@ test("a dry run reads but writes nothing", async () => {
   assert.equal(count(shop.calls, /webhookSubscriptionCreate/), 0);
 });
 
+test("a webhooks dry run with no store plans from nothing registered and calls nothing", async () => {
+  const shop = fakeShopify([node("1", "PRODUCTS_CREATE", target)]);
+  mock.method(globalThis, "fetch", shop.handler);
+  const plan = await registerWebhooks({ siteUrl: site, dryRun: true, env: { domain: "" } });
+  assert.equal(plan.offline, true);
+  assert.equal(plan.callbackUrl, target);
+  assert.deepEqual(plan.create, TOPICS);
+  assert.equal(shop.calls.length, 0);
+});
+
+test("a dry run with a store reads it and is not marked offline", async () => {
+  const shop = fakeShopify([node("1", "PRODUCTS_CREATE", target)]);
+  mock.method(globalThis, "fetch", shop.handler);
+  const plan = await registerWebhooks({ siteUrl: site, dryRun: true, env: { domain: "hook-test.myshopify.com" } });
+  assert.equal(plan.offline, undefined);
+  assert.deepEqual(plan.keep, ["PRODUCTS_CREATE"]);
+  assert.equal(count(shop.calls, /webhookSubscriptions\(/), 1);
+});
+
+test("an offline dry run still refuses a non-https URL", async () => {
+  await assert.rejects(registerWebhooks({ siteUrl: "http://localhost:3000", dryRun: true, env: { domain: "" } }), /public https/);
+});
+
 test("stale subscriptions are deleted before new ones are created", async () => {
   const shop = fakeShopify([node("9", "PRODUCTS_UPDATE", `https://old.example.gr${WEBHOOK_PATH}`)]);
   mock.method(globalThis, "fetch", shop.handler);

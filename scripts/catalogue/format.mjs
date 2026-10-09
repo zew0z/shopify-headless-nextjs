@@ -13,7 +13,8 @@ const MAX_VARIANTS = 2048;
 const MAX_OPTIONS = 3;
 const MAX_IMAGES = 20;
 
-export function validateCatalog({ collections = [], products = [], metaobjects = [] }, { tracksInventory = false } = {}) {
+// compareAtIsReal defaults to true so library callers keep the old rules; the build and push pass the owner's answer.
+export function validateCatalog({ collections = [], products = [], metaobjects = [] }, { tracksInventory = false, compareAtIsReal = true } = {}) {
   const problems = [];
   const collectionHandles = new Set();
   const productHandles = new Set();
@@ -85,7 +86,9 @@ export function validateCatalog({ collections = [], products = [], metaobjects =
       skus.add(variant.sku);
 
       if (!(Number(variant.price) > 0)) problems.push(`${label}: price must be a positive number`);
-      if (variant.compareAtPrice != null && !(Number(variant.compareAtPrice) > Number(variant.price))) {
+      if (variant.compareAtPrice != null && !compareAtIsReal) {
+        problems.push(`${label}: compareAtPrice is set, but the owner said was-prices are not real (compareAtIsReal is false); stop setting it in the source`);
+      } else if (variant.compareAtPrice != null && !(Number(variant.compareAtPrice) > Number(variant.price))) {
         problems.push(`${label}: compareAtPrice must exceed price, or the badge claims a fake discount`);
       }
 

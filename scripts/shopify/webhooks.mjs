@@ -8,6 +8,7 @@
  * secret quietly stops the site from ever refreshing.
  */
 import { adminGraphQL } from "./admin-client.mjs";
+import { shopifyEnv } from "./env.mjs";
 
 export const WEBHOOK_PATH = "/api/revalidate";
 export const TOPICS = [
@@ -49,10 +50,12 @@ export async function listWebhooks() {
   return (await adminGraphQL(LIST)).webhookSubscriptions.nodes;
 }
 
-export async function registerWebhooks({ siteUrl, dryRun = false }) {
+/** A dry run with no store configured plans as if nothing were registered, and says so with offline: true. */
+export async function registerWebhooks({ siteUrl, dryRun = false, env = shopifyEnv() }) {
   if (!/^https:\/\/[^/]+/.test(siteUrl ?? "")) {
     throw new Error("a public https URL is required (SITE_URL or --url=https://...). Shopify will not deliver to http:// or localhost; do this after the first deploy.");
   }
+  if (dryRun && !env.domain) return { ...planWebhooks([], siteUrl), offline: true };
   const plan = planWebhooks(await listWebhooks(), siteUrl);
   if (dryRun) return plan;
   for (const stale of plan.remove) await adminGraphQL(DELETE, { id: stale.id });

@@ -1,19 +1,26 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { findSdkDir } from "../shopify/sdk-dir.mjs";
+import { findTypedClaims } from "./claims.mjs";
 import { detectStack } from "./stack.mjs";
 import {
   findDataReaders,
   findFakeApis,
   findImporters,
   findInventedFields,
+  findPaymentChoices,
   findPaymentForms,
   findProductData,
+  findShopifyClients,
   findSiteData,
   TEST_FILE,
 } from "./sources.mjs";
 import { listSourceFiles } from "./walk.mjs";
 
 const read = (dir, file) => readFileSync(path.join(dir, file), "utf8");
+// The SDK of the kit this script belongs to: the kit repo's own, or the copy kit-install put into a received repo.
+const KIT_SDK = findSdkDir(fileURLToPath(new URL("../..", import.meta.url)));
 const eachLine = (dir, files, fn) => {
   for (const file of files) read(dir, file).split("\n").forEach((text, i) => fn(file, i + 1, text));
 };
@@ -121,6 +128,23 @@ export function isKitRoute(dir, file) {
   return /^(src\/)?app\/api\/(cart|revalidate|health|search)\/route\.ts$/.test(file) && read(dir, file).includes("lib/shopify");
 }
 
+/**
+ * The files in a frontend's lib/shopify that are not this kit's own copy: an older kit or the frontend's own
+ * client. The source walk skips lib/shopify as the kit's folder, so these are looked at here.
+ */
+function foreignSdkFiles(dir) {
+  return ["lib/shopify", "src/lib/shopify"].flatMap((rel) => {
+    if (!existsSync(path.join(dir, rel))) return [];
+    return readdirSync(path.join(dir, rel), { withFileTypes: true })
+      .filter((e) => e.isFile() && /\.[cm]?[jt]sx?$/.test(e.name))
+      .map((e) => `${rel}/${e.name}`)
+      .filter((f) => {
+        const kitCopy = KIT_SDK && path.join(KIT_SDK, path.posix.basename(f));
+        return !(kitCopy && existsSync(kitCopy) && readFileSync(kitCopy, "utf8") === read(dir, f));
+      });
+  });
+}
+
 /** Everything the agent needs to know about a received frontend before installing the kit. */
 export function auditFrontend(dir) {
   const stack = detectStack(dir);
@@ -131,16 +155,23 @@ export function auditFrontend(dir) {
   const importers = findImporters(dir, files);
   const dataFiles = new Set([...productData.map((d) => d.file), ...siteData.map((d) => d.file), ...files.filter((f) => /(^|\/)data\//.test(f))]);
   const unused = [...dataFiles].filter((f) => !importers.get(f).length).sort();
+  // Product and site data are reported already, and unused files never reach a customer. Other files under
+  // data/ are still scanned, so a used module of typed shop details there is found.
+  const reported = [...productData.map((d) => d.file), ...siteData.map((d) => d.file), ...unused];
+  const typedClaims = findTypedClaims(dir, files, { skip: reported, importers });
   // Old product data files are already reported as hardcoded products; tests never reach a customer.
   const priceFiles = files.filter((f) => !productData.some((d) => d.file === f) && !unused.includes(f) && !TEST_FILE.test(f));
   return {
     stack,
+    shopifyClients: findShopifyClients(dir, [...files, ...foreignSdkFiles(dir)]),
     productData,
     dataReaders: findDataReaders(dir, files, productData),
     fakeApis: findFakeApis(dir, files, productData),
     siteData,
+    typedClaims,
     inventedFields: findInventedFields(dir, files),
     paymentForms: findPaymentForms(dir, files),
+    paymentChoices: findPaymentChoices(dir, files),
     unused,
     cart: findCart(dir, files),
     cachingOff: findCachingOff(dir, files),
@@ -153,8 +184,12 @@ const places = (n) => `${n} place${n === 1 ? "" : "s"}`;
 
 /** The audit in plain words, most important line first. */
 export function summariseAudit(audit) {
-  const { stack, productData, dataReaders, fakeApis, siteData, inventedFields, paymentForms, unused, cart, cachingOff, hardcodedMoney, images } = audit;
+  const { stack, shopifyClients, productData, dataReaders, fakeApis, siteData, typedClaims, inventedFields, paymentForms, paymentChoices, unused, cart, cachingOff, hardcodedMoney, images } = audit;
   const lines = [stack.supported ? `Kit fits: ${stack.reason}` : `Stop: ${stack.reason}`];
+  if (shopifyClients.length) {
+    lines.push(`This frontend already talks to Shopify (an older kit or its own client) in ${places(shopifyClients.length)}. Read docs/frontend-wiring.md, "Frontend already has Shopify code":`);
+    for (const c of shopifyClients) lines.push(`  ${c.file}:${c.line} ${c.what}`);
+  }
   if (paymentForms.length) {
     lines.push(`Most urgent: ${places(paymentForms.length)} that look like a card payment form. Check whether it asks for card details; if it does, Shopify's checkout takes the payment, so remove it (after telling the owner):`);
     for (const f of paymentForms) lines.push(`  ${f.file}:${f.line} ${f.what}`);
@@ -177,6 +212,10 @@ export function summariseAudit(audit) {
     for (const c of cart.files) lines.push(`  ${c.file}:${c.line} ${c.why}`);
     for (const b of cart.checkoutButtons) lines.push(`  ${b.file}:${b.line} "${b.text}"`);
   } else lines.push("No cart found. This flow expects the frontend to have one: ask the owner.");
+  if (paymentChoices.length) {
+    lines.push("Payment and delivery choices typed into the checkout (recreate them in Shopify before removing the page; list them for the owner):");
+    for (const c of paymentChoices) lines.push(`  ${c.file}:${c.line} ${c.what}`);
+  }
   if (cachingOff.length) {
     lines.push(`Caching is switched off in ${places(cachingOff.length)} (pages showing products must not do this):`);
     for (const c of cachingOff) lines.push(`  ${c.file}:${c.line} ${c.what}`);
@@ -188,6 +227,12 @@ export function summariseAudit(audit) {
   if (siteData.length) {
     lines.push(`Menus, policies, pages or store claims typed into the code in ${places(siteData.length)} (read them from Shopify, hide what Shopify cannot supply):`);
     for (const d of siteData) lines.push(`  ${d.file}:${d.line} ${d.what}`);
+  }
+  if (typedClaims.length) {
+    lines.push(
+      `Shop name, store claims, shop details, legal text, metadata or stock photos typed into pages and components in ${places(typedClaims.length)} (the name and description come from getShop(); policies from getPolicy(); address, phones, hours and bank details from getStoreProfile(); other claims are hidden and listed for the owner; ask the owner where photos come from):`
+    );
+    for (const c of typedClaims) lines.push(`  ${c.file}:${c.line} ${c.kind}: ${c.what}`);
   }
   if (inventedFields.length) {
     lines.push(`Fields Shopify does not give by default (ratings, stock counts, badges...) in ${places(inventedFields.length)}: show them only if Shopify supplies them:`);

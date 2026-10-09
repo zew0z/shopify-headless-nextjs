@@ -5,8 +5,8 @@
  */
 import { shopifyFetch, requireShopify, dataOrThrow } from "./client";
 import { shopDetailsQuery, menuQuery, policiesQuery, pageQuery, metaobjectsQuery } from "./queries";
-import { toEntry, toReview, sortReviews, sortHeroSlides, type RawEntry } from "./metaobjects";
-import type { ShopDetails, Menu, ShopPolicy, ContentPage, MetaobjectEntry, Review, HeroSlide } from "./types";
+import { toEntry, toReview, sortReviews, sortHeroSlides, toStoreProfile, toFaqItems, type RawEntry } from "./metaobjects";
+import type { ShopDetails, Menu, ShopPolicy, ContentPage, MetaobjectEntry, Review, HeroSlide, StoreProfile, FaqItem } from "./types";
 
 const CONTENT = { cache: "force-cache" as RequestCache, tags: ["content"], revalidate: 3600 };
 
@@ -64,4 +64,18 @@ export async function getReviews({ product, first = 250 }: { product?: string; f
  */
 export async function getHeroSlides(): Promise<HeroSlide[]> {
   return sortHeroSlides(await getMetaobjects("hero_slide", { first: 20 }));
+}
+
+/**
+ * Shop details from Content > Metaobjects > Shop details: address, phones, opening hours, bank details.
+ * Reads the most recently saved entry. Null until the owner fills one in with a business name: hide what it would show.
+ */
+export async function getStoreProfile(): Promise<StoreProfile | null> {
+  const [entry] = await getMetaobjects("store_profile", { first: 1 });
+  return entry ? toStoreProfile(entry) : null;
+}
+
+/** FAQ entries from Content > Metaobjects > FAQ, in the owner's order (at most 100). Empty until the owner adds some: hide the FAQ. */
+export async function getFaq(): Promise<FaqItem[]> {
+  return toFaqItems(await getMetaobjects("faq_item", { first: 100 }));
 }

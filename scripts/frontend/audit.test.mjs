@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { findSdkDir } from "../shopify/sdk-dir.mjs";
 import { listSourceFiles } from "./walk.mjs";
 import { auditFrontend, checkImages, findCachingOff, findCart, findHardcodedMoney, summariseAudit } from "./audit.mjs";
 import { makeFixture } from "../test-support/fixture.mjs";
@@ -203,7 +206,7 @@ test("site content, invented fields and a card form are reported", () => {
     "src/app/page.tsx": 'import { headerMenu } from "@/data/navigation";\nimport { policies } from "@/data/policies";\nexport default function P() { return null; }\n',
     "src/data/navigation.ts": 'export const headerMenu = [{ label: "Shop", href: "/shop" }, { label: "About", href: "/pages/about" }];\n',
     "src/data/policies.ts": `export const policies = [{ handle: "refund", body: "${"x".repeat(220)}" }];\n`,
-    "src/data/products.ts": 'export type P = { name: string; price: number; rating: number; reviewCount: number };\n',
+    "src/data/products.ts": 'export const sample = { name: "A", price: 1, rating: 4.8, reviewCount: 12 };\n',
     "src/app/checkout/Form.tsx": '<input name="cardNumber" placeholder="Card number" />\n',
   });
   const audit = auditFrontend(dir);
@@ -211,6 +214,25 @@ test("site content, invented fields and a card form are reported", () => {
   assert.ok(audit.inventedFields.some((f) => f.what === "rating"));
   assert.equal(audit.paymentForms[0].file, "src/app/checkout/Form.tsx");
   assert.match(summariseAudit(audit).join("\n"), /payment form/i);
+});
+
+test("payment choices from the old checkout are in the audit and its summary, after the cart", () => {
+  const audit = auditFrontend(
+    makeFixture({
+      ...RECEIVED,
+      "src/app/checkout/page.tsx": `const METHODS = [\n  { id: "cod", label: "Αντικαταβολή (+3€)" },\n  { id: "bank", label: "Τραπεζική κατάθεση" },\n];\nexport default function C() { return null; }`,
+    })
+  );
+  assert.deepEqual(audit.paymentChoices.map((c) => `${c.file}:${c.line} ${c.what}`), [
+    "src/app/checkout/page.tsx:2 cash on delivery, fee +3€",
+    "src/app/checkout/page.tsx:3 bank transfer",
+  ]);
+  const lines = summariseAudit(audit);
+  const heading = lines.findIndex((l) => l.startsWith("Payment and delivery choices typed into the checkout (recreate them in Shopify before removing the page"));
+  assert.ok(heading > lines.findIndex((l) => l.startsWith("Cart state in")), lines.join("\n"));
+  assert.equal(lines[heading + 1], "  src/app/checkout/page.tsx:2 cash on delivery, fee +3€");
+  assert.deepEqual(auditFrontend(makeFixture(RECEIVED)).paymentChoices, []);
+  assert.ok(!summariseAudit(auditFrontend(makeFixture(RECEIVED))).some((l) => l.startsWith("Payment and delivery choices")));
 });
 
 test("files nothing imports are listed as unused and skipped by the money check", () => {
@@ -222,6 +244,61 @@ test("files nothing imports are listed as unused and skipped by the money check"
   const audit = auditFrontend(dir);
   assert.deepEqual(audit.unused, ["src/data/site.ts"]);
   assert.equal(audit.hardcodedMoney.length, 0);
+});
+
+test("typed claims in components are in the audit and its summary", () => {
+  const dir = makeFixture({
+    "package.json": { dependencies: { next: "16.2.0" } },
+    "src/app/layout.tsx": `export default function L({ children }) { return children; }`,
+    "src/components/Footer.tsx": `export const Footer = () => <p>Free returns within 30 days</p>;`,
+  });
+  const audit = auditFrontend(dir);
+  assert.deepEqual(audit.typedClaims.map((c) => `${c.file}:${c.line} ${c.kind}`), ["src/components/Footer.tsx:1 claim"]);
+  const lines = summariseAudit(audit);
+  assert.ok(lines.some((l) => /typed into pages and components in 1 place/.test(l)), lines.join("\n"));
+  assert.ok(lines.some((l) => /src\/components\/Footer\.tsx:1 claim: Free returns within 30 days/.test(l)));
+});
+
+test("shop details count only in modules something imports, under data/ too", () => {
+  const audit = auditFrontend(
+    makeFixture({
+      "package.json": { dependencies: { next: "16.3.4" } },
+      "src/data/store.ts": `export const STORE = {\n  address: "Street 1",\n  phone: "210 0000000",\n};`,
+      "src/data/old-store.ts": `export const OLD = { address: "Street 2", phone: "1" };`,
+      "src/app/contact/page.tsx": `import { STORE } from "@/data/store";\nexport default function C() { return <p>{STORE.phone}</p>; }`,
+    })
+  );
+  assert.deepEqual(
+    audit.typedClaims.filter((c) => c.kind === "shop details").map((c) => `${c.file}:${c.line} ${c.what}`),
+    ["src/data/store.ts:1 address, phone"]
+  );
+});
+
+test("a frontend that already talks to Shopify is noticed, in lib/shopify too; the kit's own SDK files are not", () => {
+  const kitProxy = readFileSync(path.join(findSdkDir(process.cwd()), "storefront-proxy.ts"), "utf8");
+  const audit = auditFrontend(
+    makeFixture({
+      "package.json": { dependencies: { next: "16.3.4" } },
+      "app/page.tsx": "export default function P() { return null; }",
+      "lib/shopify/client.ts": `export const endpoint = \`https://\${domain}/api/2025-01/graphql.json\`;`,
+      "lib/shopify/storefront-proxy.ts": kitProxy,
+      "lib/catalog-server.ts": `const headers = { "X-Shopify-Storefront-Access-Token": token };`,
+    })
+  );
+  assert.deepEqual(
+    audit.shopifyClients.map((c) => `${c.file}:${c.line} ${c.what}`),
+    ["lib/catalog-server.ts:1 sends a Storefront token", "lib/shopify/client.ts:1 calls the Storefront API"]
+  );
+  const lines = summariseAudit(audit);
+  assert.match(lines[1], /^This frontend already talks to Shopify \(an older kit or its own client\) in 2 places\. Read docs\/frontend-wiring\.md, "Frontend already has Shopify code":$/);
+  assert.ok(lines.includes("  lib/shopify/client.ts:1 calls the Storefront API"));
+});
+
+test("a frontend with only the kit's SDK, or none, has no other Shopify client", () => {
+  assert.deepEqual(auditFrontend(makeFixture(RECEIVED)).shopifyClients, []);
+  const sdk = findSdkDir(process.cwd());
+  const installed = Object.fromEntries(["client.ts", "storefront-proxy.ts", "index.ts"].map((f) => [`src/lib/shopify/${f}`, readFileSync(path.join(sdk, f), "utf8")]));
+  assert.deepEqual(auditFrontend(makeFixture({ ...RECEIVED, ...installed })).shopifyClients, []);
 });
 
 const SITE_FILES = {

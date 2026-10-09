@@ -24,7 +24,7 @@ import { loadSdkDocuments, validateDocuments } from "../shopify/validate-storefr
 import { shopMismatches, versionStatus } from "../shopify/version.mjs";
 import { bad, heading, info, mask, ok, shopifyEnv, readEnv, upsertEnv, warn } from "../shopify/env.mjs";
 
-const USAGE = "usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--rehost=host,...] [--location=<id>] | catalogue-verify | definitions [--dry-run] | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | analytics-configure [--enable|--disable] [--shop-id=ID --origins=https://... --country=XX --language=XX --currency=XXX] [--dry-run] | analytics-check [--site=https://...] | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>]";
+const USAGE = "usage: pnpm shop-setup status | next | done <id> [note] | preflight [--config-only] | shipping [--dry-run] [--location=<id>] | catalogue-build | catalogue [--dry-run] [--limit=N] [--only=collections|products] [--skip-images] [--rehost=host,...] [--location=<id>] | catalogue-verify | definitions [--dry-run] | inventory-check | token | oauth | webhooks [--list] [--dry-run] [--url=https://...] | validate-queries [--version=YYYY-MM] | e2e | analytics-configure [--enable|--disable] [--shop-id=ID --origins=https://... --country=XX --language=XX --currency=XXX] [--dry-run] | analytics-check [--site=https://...] | frontend-audit <dir> | kit-install <dir> [--dry-run] | frontend-check [dir] [--site <url>] [--product-path=/route/]";
 const HELP_WORDS = ["--help", "-h", "help"];
 const STATE_FILE = "store-setup.state.json";
 const { command, args, flags } = parseArgs(process.argv.slice(2));
@@ -212,19 +212,22 @@ switch (command) {
       break;
     }
     const siteUrl = typeof flags.url === "string" ? flags.url : env.siteUrl;
+    let plan;
     try {
-      const plan = await registerWebhooks({ siteUrl, dryRun: flags["dry-run"] === true });
+      plan = await registerWebhooks({ siteUrl, dryRun: flags["dry-run"] === true, env });
       info(`target ${plan.callbackUrl}`);
       plan.remove.forEach((r) => warn(`remove stale ${r.topic} -> ${r.url}`));
       plan.keep.forEach((t) => info(`= ${t} already registered`));
       plan.create.forEach((t) => ok(`${flags["dry-run"] === true ? "would add" : "added"} ${t}`));
+      if (plan.offline) warn("no SHOPIFY_STORE_DOMAIN: planned as if nothing were registered");
     } catch (error) {
       bad(String(error.message ?? error));
       process.exit(1);
     }
     const secret = webhookSecretStatus({ clientSecret: env.clientSecret, webhookSecret: env.webhookSecret });
-    (secret.ok ? ok : bad)(secret.note);
-    if (!secret.ok) process.exit(1);
+    // Offline there is no app yet, so the secret is a note for later, not a failure.
+    (secret.ok ? ok : plan.offline ? warn : bad)(secret.note);
+    if (!secret.ok && !plan.offline) process.exit(1);
     break;
   }
   case "validate-queries": {
@@ -283,6 +286,7 @@ switch (command) {
     if (Object.keys(scripts).length) info(`package.json scripts to add: ${Object.keys(scripts).join(", ")}`);
     if (Object.keys(dependencies).length) info(`runtime dependencies to add: ${Object.keys(dependencies).join(", ")}`);
     if (Object.keys(devDependencies).length) info(`dev tools to add: ${Object.keys(devDependencies).join(", ")}`);
+    if (plan.packageManager === "npm") info(`npm repo: its package.json dependencies are left to npm, so package-lock.json stays in sync. After installing, run: ${plan.packageJson.installCommand}`);
     if (plan.gitignore.length) info(`.gitignore lines to add: ${plan.gitignore.join(" ")}`);
     if (plan.agentsNote) info("agent instructions to add: the # Store setup block");
     for (const e of plan.extras) info(`added: ${e.to} (a starting point, edit to taste)`);
@@ -291,6 +295,12 @@ switch (command) {
     if (hasConflicts(plan)) {
       for (const c of plan.conflicts) bad(`${c.to}: ${c.why}`);
       for (const c of plan.packageJson.conflicts) bad(`package.json ${c.key} is "${c.have}", the kit needs "${c.want}"`);
+      if (plan.oldSdk) {
+        const appRoot = audit.stack.appRoot ?? "";
+        info(`${appRoot}lib/shopify already holds other Shopify code (an older kit or the frontend's own client). Move it aside, then run kit-install again:`);
+        info(`  git mv ${appRoot}lib/shopify ${appRoot}lib/shopify-old`);
+        info("  point its importers at lib/shopify-old; delete lib/shopify-old under the dead-code rule once nothing imports it.");
+      }
       info("Nothing was written. Resolve each conflict (usually the frontend's own route or script), then run kit-install again.");
       process.exit(1);
     }
@@ -302,7 +312,8 @@ switch (command) {
     const kitVersion = spawnSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).stdout.trim() || "unknown";
     const { changed } = applyKitInstall(plan, target, { audit: audit.stack.reason, install: `kit ${kitVersion}` });
     ok(changed ? `kit ${kitVersion} installed (${changed} changes)` : "kit already installed, nothing changed");
-    info(`Next, in ${target}: pnpm install, then pnpm shop-setup next.`);
+    const run = plan.packageManager === "npm" ? "npm run" : "pnpm";
+    info(`Next, in ${target}: ${plan.packageJson.installCommand}, then ${run} test:scripts, then ${run} shop-setup next.`);
     info("store-setup.state.json is the setup's progress record: commit it. frontend-audit.json is a scratch file and is ignored by git.");
     break;
   }
@@ -314,12 +325,18 @@ switch (command) {
       bad("--site needs the address of the running site, for example --site http://localhost:3000");
       process.exit(1);
     }
+    const productPath = typeof flags["product-path"] === "string" ? flags["product-path"] : undefined;
+    if (flags["product-path"] && !productPath) {
+      bad("--product-path needs the site's product route, for example --product-path=/item/");
+      process.exit(1);
+    }
     const folder = args.find((a) => a !== site);
     const results = checkWiring(path.resolve(folder ?? "."));
-    if (site) results.push(...(await smokeSite(site)));
+    if (site) results.push(...(await smokeSite(site, fetch, { productPath })));
     for (const r of results) {
       (r.ok ? ok : bad)(r.what);
       for (const w of r.where) info(w);
+      for (const n of r.notes ?? []) info(n);
     }
     const failed = results.filter((r) => !r.ok).length;
     if (failed) info(`${failed} of ${results.length} checks failed.`);

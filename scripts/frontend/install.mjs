@@ -3,14 +3,14 @@ import path from "node:path";
 import { emptyState, markDone, saveState } from "../setup/state.mjs";
 import { STORE_SETUP_BLOCK, hasConflicts } from "./kit.mjs";
 
-/** Adds keys to package.json and keeps its key order, indentation and final newline. */
+/** Adds keys to package.json and keeps its key order, indentation and final newline. A section with nothing to add is left as it is. */
 function mergePackageJson(file, add) {
   const text = readFileSync(file, "utf8");
   const indent = /^([ \t]+)"/m.exec(text)?.[1] ?? 2;
   const pkg = JSON.parse(text);
-  pkg.scripts = { ...pkg.scripts, ...add.scripts };
-  pkg.dependencies = { ...pkg.dependencies, ...add.dependencies };
-  pkg.devDependencies = { ...pkg.devDependencies, ...add.devDependencies };
+  for (const key of ["scripts", "dependencies", "devDependencies"]) {
+    if (Object.keys(add[key] ?? {}).length) pkg[key] = { ...pkg[key], ...add[key] };
+  }
   writeFileSync(file, `${JSON.stringify(pkg, null, indent)}${text.endsWith("\n") ? "\n" : ""}`);
 }
 

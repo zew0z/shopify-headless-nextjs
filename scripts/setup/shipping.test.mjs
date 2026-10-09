@@ -1,6 +1,8 @@
-import test from "node:test";
+import test, { mock, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { buildZone, findCountryCollisions } from "./shipping.mjs";
+import { applyShipping, buildZone, findCountryCollisions } from "./shipping.mjs";
+
+afterEach(() => mock.restoreAll());
 
 const config = {
   currency: "EUR",
@@ -56,4 +58,33 @@ test("collisions are reported so the applier can refuse instead of duplicating",
   };
   assert.deepEqual(findCountryCollisions(profile, ["GR", "CY"]), [{ zone: "Domestic", country: "GR" }]);
   assert.deepEqual(findCountryCollisions(profile, ["CY"]), []);
+});
+
+test("a dry run with no store prints the zone offline and calls nothing", async () => {
+  mock.method(globalThis, "fetch", async () => {
+    throw new Error("must not call Shopify");
+  });
+  mock.method(console, "log", () => {});
+  const phoneRate = { currency: "EUR", shippingCountries: ["GR"], freeShippingThreshold: 2000, shippingRates: [{ name: "Delivery cost agreed by phone", price: 0 }] };
+  const result = await applyShipping({ config: phoneRate, dryRun: true, env: { domain: "" } });
+  assert.equal(result.offline, true);
+  assert.equal(globalThis.fetch.mock.callCount(), 0);
+  assert.equal(result.zone.methodDefinitionsToCreate[0].name, "Delivery cost agreed by phone");
+  assert.equal(result.zone.methodDefinitionsToCreate[0].rateDefinition.price.amount, "0.00");
+  const printed = console.log.mock.calls.map((c) => c.arguments.join(" ")).join("\n");
+  assert.match(printed, /no SHOPIFY_STORE_DOMAIN: not checked against the store's existing zones and locations/);
+  assert.match(printed, /dry run, nothing written/);
+});
+
+test("without --dry-run a missing store is never treated as offline", async () => {
+  mock.method(globalThis, "fetch", async () => {
+    throw new Error("must not call Shopify");
+  });
+  mock.method(console, "log", () => {});
+  mock.method(console, "error", () => {});
+  mock.method(process, "exit", (code) => {
+    throw new Error(`exit ${code}`);
+  });
+  // With no store the Admin client exits; if the machine has one configured, the fake fetch refuses. Either way nothing "offline" comes back.
+  await assert.rejects(applyShipping({ config, dryRun: false, env: { domain: "" } }), /exit 1|must not call Shopify/);
 });

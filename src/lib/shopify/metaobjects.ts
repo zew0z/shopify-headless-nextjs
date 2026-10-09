@@ -1,9 +1,10 @@
 /**
- * Pure mappers for content entries (Content > Metaobjects): reviews and hero
- * slides the owner types into the Shopify admin. Browser-safe: no fetch here.
- * Anything incomplete is dropped, never filled in with made-up words or pictures.
+ * Pure mappers for content entries (Content > Metaobjects): reviews, hero
+ * slides, shop details and FAQ the owner types into the Shopify admin.
+ * Browser-safe: no fetch here. Anything incomplete is dropped, never filled in
+ * with made-up words or pictures.
  */
-import type { EntryProduct, HeroSlide, LinkedEntry, MetaobjectEntry, MetaobjectField, Review, ShopifyImage } from "./types";
+import type { EntryProduct, FaqItem, HeroSlide, LinkedEntry, MetaobjectEntry, MetaobjectField, Review, ShopifyImage, StoreProfile } from "./types";
 
 interface RawField {
   key: string;
@@ -80,4 +81,49 @@ export function sortHeroSlides(entries: MetaobjectEntry[]): HeroSlide[] {
     .sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.handle.localeCompare(b.handle))
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- rank only orders the list
     .map(({ rank: _rank, ...slide }) => slide);
+}
+
+/** A whole number field's value, or null when blank or not a whole number. */
+const integer = (e: MetaobjectEntry, key: string): number | null => {
+  const v = value(e, key);
+  return v !== null && Number.isInteger(Number(v)) ? Number(v) : null;
+};
+
+/** A list field's value is a JSON array of strings; anything else is an empty list. */
+const list = (v: string | null): string[] => {
+  if (!v) return [];
+  try {
+    const parsed: unknown = JSON.parse(v);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()) : [];
+  } catch {
+    return [];
+  }
+};
+
+/** The shop details entry. Null without a business name, so a half-made entry hides everything rather than showing scraps. */
+export function toStoreProfile(e: MetaobjectEntry): StoreProfile | null {
+  const legalName = value(e, "legal_name");
+  if (!legalName) return null;
+  const iban = value(e, "bank_iban");
+  return {
+    legalName,
+    address: value(e, "address"),
+    phones: list(value(e, "phones")),
+    email: value(e, "email"),
+    openingHours: list(value(e, "opening_hours")),
+    mapUrl: value(e, "map_url"),
+    foundedYear: integer(e, "founded_year"),
+    deliveryNote: value(e, "delivery_note"),
+    priceNote: value(e, "price_note"),
+    bank: iban ? { beneficiary: value(e, "bank_beneficiary"), iban } : null,
+  };
+}
+
+/** The owner's order (1 first); items without an order go last, by handle. Items missing a question or an answer are dropped. */
+export function toFaqItems(entries: MetaobjectEntry[]): FaqItem[] {
+  return entries
+    .map((e) => ({ handle: e.handle, question: value(e, "question"), answer: value(e, "answer"), rank: integer(e, "rank") }))
+    .filter((f): f is FaqItem & { rank: number | null } => f.question !== null && f.answer !== null)
+    .sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.handle.localeCompare(b.handle))
+    .map(({ handle, question, answer }) => ({ handle, question, answer }));
 }

@@ -39,6 +39,62 @@ export default function GlobalError({ error, retry, reset }: { error: Error & { 
 }
 `;
 
+// Starter pages that read text the owner writes in the Shopify admin, for a frontend
+// that has no policies/ or pages/ route. `sdk` is the import path of the kit's SDK
+// from the page's folder. Next 16 hands pages and generateMetadata `params` as a Promise.
+
+/** A legal policy from Shopify (Settings > Policies), at /policies/<handle>. The body is HTML the owner wrote in the Shopify admin. */
+export const policyPage = (sdk) => `import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { getPolicy } from "${sdk}";
+
+type Props = { params: Promise<{ handle: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { handle } = await params;
+  const policy = await getPolicy(handle);
+  return policy ? { title: policy.title } : {};
+}
+
+export default async function PolicyPage({ params }: Props) {
+  const { handle } = await params;
+  const policy = await getPolicy(handle);
+  if (!policy) notFound();
+  return (
+    <main>
+      <h1>{policy.title}</h1>
+      <div dangerouslySetInnerHTML={{ __html: policy.body }} />
+    </main>
+  );
+}
+`;
+
+/** An info page from Shopify (Online Store > Pages), at /pages/<handle>. */
+export const infoPage = (sdk) => `import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { getPage } from "${sdk}";
+
+type Props = { params: Promise<{ handle: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { handle } = await params;
+  const page = await getPage(handle);
+  return page ? { title: page.seo?.title ?? page.title, description: page.seo?.description ?? page.bodySummary } : {};
+}
+
+export default async function InfoPage({ params }: Props) {
+  const { handle } = await params;
+  const page = await getPage(handle);
+  if (!page) notFound();
+  return (
+    <main>
+      <h1>{page.title}</h1>
+      <div dangerouslySetInnerHTML={{ __html: page.body }} />
+    </main>
+  );
+}
+`;
+
 /** NOTIXV's container image: the standalone Next server, built only if tests, lint and build pass. */
 export function dockerfile(pm) {
   const install = pm === "pnpm"

@@ -51,7 +51,7 @@ async function pickLocation(locationId) {
 export async function pushCatalogue({ config, catalog, dryRun = false, limit, only, skipImages = false, locationId, rehost = [] }) {
   const tracksInventory = config.tracksInventory;
   const wanted = wantedDefinitions(catalog, { wantsReviews: config.wantsReviews });
-  const problems = [...validateCatalog(catalog, { tracksInventory }), ...wanted.problems, ...validateEntries(catalog.metaobjects, wanted.metaobjects)];
+  const problems = [...validateCatalog(catalog, { tracksInventory, compareAtIsReal: config.compareAtIsReal }), ...wanted.problems, ...validateEntries(catalog.metaobjects, wanted.metaobjects)];
   heading(`Catalogue  ${catalog.collections.length} collections, ${catalog.products.length} products`);
   if (problems.length) {
     problems.slice(0, 40).forEach((p) => bad(p));

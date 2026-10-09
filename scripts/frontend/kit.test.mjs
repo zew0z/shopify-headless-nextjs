@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { hasConflicts, kitFiles, planKitInstall } from "./kit.mjs";
+import { hasConflicts, kitFiles, planKitInstall, sdkImport } from "./kit.mjs";
+import { infoPage, policyPage } from "./templates.mjs";
 import { makeFixture } from "../test-support/fixture.mjs";
 
 const kitRoot = process.cwd();
 // The NOTIXV deploy files are covered by their own tests below; these ignore them.
 const notDeploy = (e) => !["Dockerfile", ".dockerignore"].includes(e.to) && !e.to.startsWith(".github/");
+// pnpm repos get the kit's pnpm-workspace.yaml; an npm repo the kit was installed into has none to give.
+const WORKSPACE = existsSync(path.join(kitRoot, "pnpm-workspace.yaml")) ? ["pnpm-workspace.yaml"] : [];
 const received = (extra = {}) =>
   makeFixture({
     "package.json": { name: "received", scripts: { dev: "next dev", build: "next build" }, dependencies: { next: "16.2.0" } },
@@ -116,7 +119,7 @@ test("the plan adds error pages and a CLAUDE.md pointer only where missing", () 
   const target = received({ "app/error.tsx": "mine" });
   const plan = planKitInstall({ kitRoot, target, appRoot: "" });
   const extras = plan.extras.filter(notDeploy).map((e) => e.to).sort();
-  assert.deepEqual(extras, ["CLAUDE.md", "app/global-error.tsx"]);
+  assert.deepEqual(extras, ["CLAUDE.md", "app/global-error.tsx", "app/pages/[handle]/page.tsx", "app/policies/[handle]/page.tsx", ...WORKSPACE]);
   assert.match(plan.extras.find((e) => e.to === "CLAUDE.md").text, /@AGENTS\.md/);
   assert.match(plan.extras.find((e) => e.to === "app/global-error.tsx").text, /<html/);
   assert.ok(plan.gitignore.includes("frontend-audit.json"));
@@ -126,7 +129,13 @@ test("the plan adds error pages and a CLAUDE.md pointer only where missing", () 
 
 test("the error pages go under the app root, and an existing CLAUDE.md is left alone", () => {
   const plan = planKitInstall({ kitRoot, target: received({ "src/app/page.tsx": "", "CLAUDE.md": "# Mine\n" }), appRoot: "src/" });
-  assert.deepEqual(plan.extras.filter(notDeploy).map((e) => e.to).sort(), ["src/app/error.tsx", "src/app/global-error.tsx"]);
+  assert.deepEqual(plan.extras.filter(notDeploy).map((e) => e.to).sort(), [
+    ...WORKSPACE,
+    "src/app/error.tsx",
+    "src/app/global-error.tsx",
+    "src/app/pages/[handle]/page.tsx",
+    "src/app/policies/[handle]/page.tsx",
+  ]);
   assert.equal(plan.keptErrorPage, false);
 });
 
@@ -186,6 +195,104 @@ test("the image build runs lint only when the repo has a lint script", () => {
   assert.match(planKitInstall({ kitRoot, target: pnpm, appRoot: "" }).extras.find((e) => e.to === "Dockerfile").text, /pnpm run --if-present lint/);
   const npm = makeFixture({ "package.json": { name: "shop" }, "package-lock.json": "{}" });
   assert.match(planKitInstall({ kitRoot, target: npm, appRoot: "" }).extras.find((e) => e.to === "Dockerfile").text, /npm run --if-present lint/);
+});
+
+// The kit's own text of one of its routes, as it ships with @/lib/shopify imports.
+const kitRoute = (r) => readFileSync(path.join(kitRoot, kitFiles(kitRoot, "").find((f) => f.to === `app/api/${r}/route.ts`).from), "utf8");
+
+test("routes keep @/lib/shopify in a repo with the @/* alias, so an identical route is not a conflict", () => {
+  for (const [appRoot, aliasTarget] of [["", "./*"], ["src/", "./src/*"]]) {
+    const target = received({
+      "tsconfig.json": JSON.stringify({ compilerOptions: { paths: { "@/*": [aliasTarget] } } }),
+      [`${appRoot}app/page.tsx`]: "",
+      [`${appRoot}app/api/health/route.ts`]: kitRoute("health"),
+    });
+    const plan = planKitInstall({ kitRoot, target, appRoot });
+    assert.ok(plan.same.includes(`${appRoot}app/api/health/route.ts`), appRoot);
+    assert.deepEqual(plan.conflicts, [], appRoot);
+    assert.ok(plan.write.find((w) => w.to === `${appRoot}app/api/cart/route.ts`).text.includes('from "@/lib/shopify"'), appRoot);
+    assert.ok(plan.write.find((w) => w.to === `${appRoot}app/api/[version]/graphql.json/route.ts`).text.includes('"@/lib/shopify/storefront-proxy"'), appRoot);
+  }
+});
+
+test("in an alias repo, a route an older kit installed with relative imports is the same route, not a conflict", () => {
+  const relative = kitRoute("health").replaceAll('"@/lib/shopify', '"../../../lib/shopify');
+  const target = received({ "tsconfig.json": JSON.stringify({ compilerOptions: { paths: { "@/*": ["./*"] } } }), "app/api/health/route.ts": relative });
+  const plan = planKitInstall({ kitRoot, target, appRoot: "" });
+  assert.ok(plan.same.includes("app/api/health/route.ts"));
+  assert.deepEqual(plan.conflicts, []);
+  // Without the alias an @/ import would not resolve, so it stays a conflict there.
+  const noAlias = received({ "app/api/health/route.ts": kitRoute("health") });
+  assert.deepEqual(planKitInstall({ kitRoot, target: noAlias, appRoot: "" }).conflicts.map((c) => c.to), ["app/api/health/route.ts"]);
+});
+
+test("an @/* alias that points somewhere else, or a baseUrl, decides the import too", () => {
+  const elsewhere = received({ "tsconfig.json": JSON.stringify({ compilerOptions: { paths: { "@/*": ["./src/*"] } } }) });
+  assert.equal(sdkImport(elsewhere, "", "app/api/cart/route.ts"), "../../../lib/shopify");
+  const based = received({ "tsconfig.json": `{ "compilerOptions": { "baseUrl": "./src", "paths": { "@/*": ["./*"] } } }` });
+  assert.equal(sdkImport(based, "src/", "src/app/api/cart/route.ts"), "@/lib/shopify");
+});
+
+test("sdkImport is relative without the alias, the same paths kit-install always wrote", () => {
+  const target = received({});
+  assert.equal(sdkImport(target, "", "app/policies/[handle]/page.tsx"), "../../../lib/shopify");
+  assert.equal(sdkImport(target, "src/", "src/app/policies/[handle]/page.tsx"), "../../../lib/shopify");
+  assert.equal(sdkImport(target, "", "app/api/[version]/graphql.json/route.ts"), "../../../../lib/shopify");
+  assert.equal(sdkImport(target, "", "app/api/shopify/analytics/config/route.ts"), "../../../../../lib/shopify");
+});
+
+test("a conflict inside lib/shopify marks an older SDK; a route conflict alone does not", () => {
+  assert.equal(planKitInstall({ kitRoot, target: received({ "lib/shopify/index.ts": "export const old = 1;" }), appRoot: "" }).oldSdk, true);
+  assert.equal(planKitInstall({ kitRoot, target: received({ "src/app/page.tsx": "", "src/lib/shopify/client.ts": "old" }), appRoot: "src/" }).oldSdk, true);
+  assert.equal(planKitInstall({ kitRoot, target: received({ "app/api/cart/route.ts": "export async function POST() {}" }), appRoot: "" }).oldSdk, false);
+});
+
+test("npm repo: package.json dependencies are left alone; the npm commands that add them are printed instead", () => {
+  const target = received({ "package-lock.json": "{}" });
+  const plan = planKitInstall({ kitRoot, target, appRoot: "" });
+  const kitPkg = JSON.parse(readFileSync(path.join(kitRoot, "package.json"), "utf8"));
+  assert.equal(plan.packageManager, "npm");
+  assert.deepEqual(plan.packageJson.add.devDependencies, {});
+  assert.deepEqual(plan.packageJson.add.dependencies, {});
+  assert.ok(Object.keys(plan.packageJson.add.scripts).length > 0, "scripts are still added");
+  assert.match(plan.packageJson.installCommand, /^npm install --save-dev @playwright\/test@\S+ typescript@\S+ && npm install --save-exact @shopify\/hydrogen@\S+$/);
+  assert.ok(plan.packageJson.installCommand.includes(`@shopify/hydrogen@${kitPkg.dependencies["@shopify/hydrogen"]}`));
+  assert.ok(!plan.extras.some((e) => e.to === "pnpm-workspace.yaml"));
+});
+
+test("npm repo with every package already there: plain npm install", () => {
+  const kitPkg = JSON.parse(readFileSync(path.join(kitRoot, "package.json"), "utf8"));
+  const pkg = {
+    name: "received",
+    dependencies: { next: "16", "@shopify/hydrogen": kitPkg.dependencies["@shopify/hydrogen"] },
+    devDependencies: { "@playwright/test": "^1", typescript: "^5" },
+  };
+  const plan = planKitInstall({ kitRoot, target: received({ "package.json": pkg, "package-lock.json": "{}" }), appRoot: "" });
+  assert.equal(plan.packageJson.installCommand, "npm install");
+});
+
+test("pnpm repo: dependencies go into package.json; a repo without pnpm-workspace.yaml gets the kit's, one with it keeps its own", { skip: !WORKSPACE.length && "this repo has no pnpm-workspace.yaml" }, () => {
+  const plan = planKitInstall({ kitRoot, target: received({ "pnpm-lock.yaml": "" }), appRoot: "" });
+  assert.equal(plan.packageManager, "pnpm");
+  assert.equal(plan.packageJson.installCommand, "pnpm install");
+  assert.ok(plan.packageJson.add.devDependencies["@playwright/test"]);
+  assert.equal(plan.extras.find((e) => e.to === "pnpm-workspace.yaml").text, readFileSync(path.join(kitRoot, "pnpm-workspace.yaml"), "utf8"));
+  const own = planKitInstall({ kitRoot, target: received({ "pnpm-lock.yaml": "", "pnpm-workspace.yaml": "packages: []\n" }), appRoot: "" });
+  assert.ok(!own.extras.some((e) => e.to === "pnpm-workspace.yaml"));
+});
+
+test("kit-install adds the policy and info page starters only where the frontend has none", () => {
+  const plan = planKitInstall({ kitRoot, target: received({ "app/pages/about/page.tsx": "x" }), appRoot: "" });
+  assert.equal(plan.extras.find((e) => e.to === "app/policies/[handle]/page.tsx").text, policyPage("../../../lib/shopify"));
+  assert.ok(!plan.extras.some((e) => e.to === "app/pages/[handle]/page.tsx"));
+  assert.deepEqual(plan.conflicts, [], "their own pages folder is not a conflict");
+});
+
+test("the page starters follow the app root and the @/* alias", () => {
+  const target = received({ "src/app/page.tsx": "", "tsconfig.json": JSON.stringify({ compilerOptions: { paths: { "@/*": ["./src/*"] } } }) });
+  const plan = planKitInstall({ kitRoot, target, appRoot: "src/" });
+  assert.equal(plan.extras.find((e) => e.to === "src/app/policies/[handle]/page.tsx").text, policyPage("@/lib/shopify"));
+  assert.equal(plan.extras.find((e) => e.to === "src/app/pages/[handle]/page.tsx").text, infoPage("@/lib/shopify"));
 });
 
 test("no standalone note when the repo has its own Dockerfile", () => {

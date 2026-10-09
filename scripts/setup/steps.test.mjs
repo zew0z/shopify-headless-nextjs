@@ -125,6 +125,43 @@ test("every automation names a command the CLI has", async () => {
   for (const s of STEPS) if (s.automation) assert.ok(commands.has(s.automation), `${s.id} names unknown command ${s.automation}`);
 });
 
+test("local pickup is an optional browser step after shipping, and go-live waits for it", () => {
+  const step = byId["local-pickup"];
+  assert.equal(step.owner, "browser");
+  assert.deepEqual(step.needs, ["shipping"]);
+  assert.match(step.instructions, /Local pickup/);
+  assert.match(step.instructions, /locationLocalPickupEnable \(UNVERIFIED\)/);
+  assert.match(step.instructions, /n\/a/);
+  assert.ok(byId["go-live"].needs.includes("local-pickup"));
+});
+
+test("intake says how to offer delivery priced by phone, and that regional rates are unverified", () => {
+  assert.match(byId.intake.instructions, /price 0 whose name says so/);
+  assert.match(byId.intake.instructions, /delivery note/);
+  assert.match(byId.intake.instructions, /province codes/);
+  assert.match(byId.intake.instructions, /unverified for Greece/);
+});
+
+test("the owner fills in the shop details and FAQ after the content types exist, before go-live", () => {
+  const step = byId["shop-details"];
+  assert.equal(step.owner, "human");
+  assert.deepEqual(step.needs, ["content-types"]);
+  assert.match(step.instructions, /getStoreProfile\(\) and getFaq\(\)/);
+  assert.match(step.instructions, /never types these into the code/);
+  assert.ok(byId["go-live"].needs.includes("shop-details"));
+  assert.match(byId["content-types"].instructions, /Shop details and FAQ/);
+});
+
+test("payment choices the audit found are handed to the owner's payment steps", () => {
+  assert.match(byId["frontend-audit"].instructions, /payment and delivery choices typed into the old checkout/);
+  assert.match(byId["frontend-audit"].instructions, /payments, cod-payment and local-pickup/);
+  assert.match(byId.payments.instructions, /Recreate every payment choice the audit listed/);
+  assert.match(byId.payments.instructions, /Manual payment methods > Bank deposit/);
+  assert.match(byId.payments.instructions, /IRIS/);
+  assert.match(byId["cod-payment"].instructions, /no built-in fee for cash on delivery \(UNVERIFIED/);
+  assert.match(byId["cod-payment"].instructions, /ask the owner/);
+});
+
 test("the new setup steps exist and name their commands", () => {
   const byId = Object.fromEntries(STEPS.map((s) => [s.id, s]));
   assert.equal(byId["content-types"].automation, "definitions");

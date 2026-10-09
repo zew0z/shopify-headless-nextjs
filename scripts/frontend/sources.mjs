@@ -262,7 +262,8 @@ const SITE_NAME = /site|nav|menu|footer|polic|pages|social|announce/i;
 const EXPORTED_LITERAL = /^export\s+(?:const|let|var)\s+(\w+)[^=\n]*=\s*[[{]|^export\s+default\s+[[{]/;
 const STRING_LITERAL = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
 const KEY = /(?:^|[\s{,])["']?(\w+)["']?\s*:/gm;
-const CLAIM_NAME = /site|announce|shipping|contact|social/i;
+// Whole names only: `siteName` (OpenGraph) and `website` are not store claims.
+const CLAIM_NAME = /^(announce\w*|freeShipping\w*|shipping\w*|contact\w*|social\w*)$/i;
 
 /** A link list: one object with a link (href or url) next to a label, title or name. A product's image url is not one. */
 function hasLinkList(text) {
@@ -321,10 +322,12 @@ export function findSiteData(dir, files, productData = findProductData(dir, file
   return found;
 }
 
-const INVENTED_FIELD = /(?<![?\w.]\s*)(?:^|[\s{,;(])["']?(rating|reviewCount|reviews|stockLeft|badge|subscribable)["']?\??\s*:/;
+// Only a key holding a literal (`rating: 4.8`, `reviews: [...]`, `badge: "Sale"`); a type field or an expression is not invented data.
+// The value is a lookahead, so a nested key (`{ reviews: [{ rating: 5 }] }`) still has its `{` to start from.
+const INVENTED_FIELD = /(?<![?\w.]\s*)(?:^|[\s{,;(])["']?(rating|reviewCount|reviews|stockLeft|badge|subscribable)["']?\??\s*:\s*(?=-?\d|["'`[{]|true\b|false\b)/g;
 const COMMENT_LINE = /^\s*(\/\/|\/\*|\*)/;
 
-/** Fields a store does not give by default (ratings, stock counts...): object keys or type fields, each once per file. */
+/** Fields a store does not give by default (ratings, stock counts...): object keys holding typed-in values, each once per file. */
 export function findInventedFields(dir, files) {
   const found = [];
   for (const file of files) {
@@ -332,17 +335,69 @@ export function findInventedFields(dir, files) {
     const seen = new Set();
     read(dir, file).split("\n").forEach((text, i) => {
       if (COMMENT_LINE.test(text)) return;
-      const m = INVENTED_FIELD.exec(text);
-      if (m && !seen.has(m[1])) {
-        seen.add(m[1]);
-        found.push({ file, line: i + 1, what: m[1] });
+      for (const [, what] of text.matchAll(INVENTED_FIELD)) {
+        if (seen.has(what)) continue;
+        seen.add(what);
+        found.push({ file, line: i + 1, what });
       }
     });
   }
   return found;
 }
 
-const CARD_ATTRIBUTE = /\b(name|id|placeholder|autocomplete)\s*=\s*\{?\s*(["'`])([^"'`]*)\2/gi;
+const SHOPIFY_CLIENT = [
+  [/X-Shopify-Storefront-Access-Token/i, "sends a Storefront token"],
+  [/\/api\/(?:\d{4}-\d{2}|unstable|\$\{[^}]+\})\/graphql\.json/, "calls the Storefront API"],
+  [/from\s+["']@shopify\/(hydrogen-react|storefront-api-client|shopify-api)["']/, "uses a Shopify package"],
+];
+
+/** Code that already talks to Shopify: an older kit or the frontend's own client. Each file is listed once. */
+export function findShopifyClients(dir, files) {
+  const found = [];
+  for (const file of files.filter((f) => !TEST_FILE.test(f) && !f.endsWith(".json"))) {
+    const lines = read(dir, file).split("\n");
+    for (const [pattern, what] of SHOPIFY_CLIENT) {
+      const i = lines.findIndex((l) => pattern.test(l));
+      if (i >= 0) {
+        found.push({ file, line: i + 1, what });
+        break;
+      }
+    }
+  }
+  return found.sort((a, b) => a.file.localeCompare(b.file));
+}
+
+const CHECKOUT_FILE = /(^|\/)(checkout|payment|pay)[^/]*(\/|\.[jt]sx?$)/i;
+// Greek words with and without their accents, since labels are often typed in capitals.
+const PAYMENT_CHOICES = [
+  [/αντικαταβολ|cash on delivery|\bCOD\b/iu, "cash on delivery"],
+  [/τραπεζικ\S*\s+(κατ[άα]θεσ|μεταφορ)|bank (transfer|deposit)|\bIBAN\b/iu, "bank transfer"],
+  [/\bIRIS\b/, "IRIS"],
+  [/δ[όο]σεις|installments|instalments|\bKlarna\b/iu, "instalments"],
+  [/\bPayPal\b/i, "PayPal"],
+  [/παραλαβ\S*\s+απ[όο]\s+(το\s+|την\s+)?(κατ[άα]στημα|[έε]κθεσ)|(store|local|in-store)\s+pick-?up|click\s*(&|and)\s*collect/iu, "pickup from the shop"],
+];
+const FEE = /\+\s*\d+(?:[.,]\d+)?\s*(?:€|EUR)|(?:€|EUR)\s*\d+(?:[.,]\d+)?/i;
+
+/**
+ * Payment and delivery choices typed into the frontend's own checkout (cash on delivery and its fee, bank
+ * transfer, pickup...): owner rules to recreate in Shopify before the fake checkout is deleted. One per line.
+ */
+export function findPaymentChoices(dir, files) {
+  const found = [];
+  for (const file of files.filter((f) => CHECKOUT_FILE.test(f) && !TEST_FILE.test(f))) {
+    read(dir, file).split("\n").forEach((text, i) => {
+      if (COMMENT_LINE.test(text)) return;
+      const hit = PAYMENT_CHOICES.find(([pattern]) => pattern.test(text));
+      if (!hit) return;
+      const fee = FEE.exec(text)?.[0].replace(/\s+/g, "");
+      found.push({ file, line: i + 1, what: fee ? `${hit[1]}, fee ${fee}` : hit[1] });
+    });
+  }
+  return found;
+}
+
+const CARD_ATTRIBUTE =/\b(name|id|placeholder|autocomplete)\s*=\s*\{?\s*(["'`])([^"'`]*)\2/gi;
 const CARD_WORDS = /cc-number|cc-csc|cc-exp|card ?number|cvc|cvv/i;
 // An expiry field alone could be a coupon or a product: it counts beside card words or card fields.
 const EXPIRY_WORDS = /expiry|exp-date/i;

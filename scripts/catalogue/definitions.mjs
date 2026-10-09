@@ -10,9 +10,13 @@ import { adminGraphQL } from "../shopify/admin-client.mjs";
 
 const PUBLIC = { storefront: "PUBLIC_READ" };
 const TYPE_PATTERN = /^[a-z][a-z0-9_]*$/;
-const KIT_TYPES = new Set(["hero_slide", "customer_review"]);
+const KIT_TYPES = new Set(["hero_slide", "customer_review", "store_profile", "faq_item"]);
 
-/** The kit's own types. The owner fills them in under Content > Metaobjects. */
+/**
+ * The kit's own types. The owner fills them in under Content > Metaobjects.
+ * store_profile holds the shop details a frontend would otherwise type in (address,
+ * phones, bank details); faq_item holds one question each. Both are always defined.
+ */
 export function kitDefinitions({ wantsReviews = false } = {}) {
   const metaobjects = [
     {
@@ -25,6 +29,34 @@ export function kitDefinitions({ wantsReviews = false } = {}) {
         { key: "image", name: "Image (blank: the product's photo)", type: "file_reference" },
         { key: "product", name: "Product", type: "product_reference" },
         { key: "link", name: "Link, a path like /collections/sofas", type: "single_line_text_field" },
+        { key: "rank", name: "Order (1 shows first)", type: "number_integer" },
+      ],
+    },
+    {
+      type: "store_profile",
+      name: "Shop details",
+      displayNameKey: "legal_name",
+      fieldDefinitions: [
+        { key: "legal_name", name: "Business name", type: "single_line_text_field", required: true },
+        { key: "address", name: "Address", type: "multi_line_text_field" },
+        { key: "phones", name: "Phone numbers", type: "list.single_line_text_field" },
+        { key: "email", name: "Email", type: "single_line_text_field" },
+        { key: "opening_hours", name: "Opening hours, one line each", type: "list.single_line_text_field" },
+        { key: "map_url", name: "Map link", type: "url" },
+        { key: "founded_year", name: "Founded (year)", type: "number_integer" },
+        { key: "delivery_note", name: "Delivery terms shown on the site", type: "multi_line_text_field" },
+        { key: "price_note", name: "Price note, for example VAT included", type: "single_line_text_field" },
+        { key: "bank_beneficiary", name: "Bank transfer: account holder", type: "single_line_text_field" },
+        { key: "bank_iban", name: "Bank transfer: IBAN", type: "single_line_text_field" },
+      ],
+    },
+    {
+      type: "faq_item",
+      name: "FAQ",
+      displayNameKey: "question",
+      fieldDefinitions: [
+        { key: "question", name: "Question", type: "single_line_text_field", required: true },
+        { key: "answer", name: "Answer", type: "multi_line_text_field", required: true },
         { key: "rank", name: "Order (1 shows first)", type: "number_integer" },
       ],
     },

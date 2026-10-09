@@ -4,9 +4,28 @@ import { kitDefinitions, wantedDefinitions, planDefinitions, pushDefinitions } f
 
 const product = (metafields) => ({ handle: "a", title: "A", variants: [{ sku: "1", price: "1" }], metafields });
 
-test("the kit always defines hero slides, and reviews only when the owner wants them", () => {
-  assert.deepEqual(kitDefinitions({ wantsReviews: false }).metaobjects.map((d) => d.type), ["hero_slide"]);
-  assert.deepEqual(kitDefinitions({ wantsReviews: true }).metaobjects.map((d) => d.type), ["hero_slide", "customer_review"]);
+test("the kit always defines hero slides, the shop details and the FAQ, and reviews only when the owner wants them", () => {
+  assert.deepEqual(kitDefinitions().metaobjects.map((d) => d.type), ["hero_slide", "store_profile", "faq_item"]);
+  assert.deepEqual(kitDefinitions({ wantsReviews: true }).metaobjects.map((d) => d.type), ["hero_slide", "store_profile", "faq_item", "customer_review"]);
+});
+
+test("the shop details need a business name, list fields hold several lines, and a FAQ item needs a question and an answer", () => {
+  const [, profile, faq] = kitDefinitions().metaobjects;
+  const field = (def, key) => def.fieldDefinitions.find((f) => f.key === key);
+  assert.equal(profile.displayNameKey, "legal_name");
+  assert.equal(field(profile, "legal_name").required, true);
+  assert.deepEqual(profile.fieldDefinitions.filter((f) => f.required).map((f) => f.key), ["legal_name"]);
+  assert.equal(field(profile, "phones").type, "list.single_line_text_field");
+  assert.equal(field(profile, "opening_hours").type, "list.single_line_text_field");
+  assert.equal(field(profile, "founded_year").type, "number_integer");
+  assert.ok(field(profile, "bank_iban") && field(profile, "bank_beneficiary"));
+  assert.deepEqual(faq.fieldDefinitions.filter((f) => f.required).map((f) => f.key), ["question", "answer"]);
+});
+
+test("a source cannot redefine the shop details or the FAQ", () => {
+  const def = (type) => ({ type, name: "X", displayNameKey: "label", fieldDefinitions: [{ key: "label", name: "L", type: "single_line_text_field" }] });
+  const { problems } = wantedDefinitions({ definitions: { metaobjects: [def("store_profile"), def("faq_item")] }, products: [] }, {});
+  assert.deepEqual(problems, ["store_profile is a kit type; give the source's type another name", "faq_item is a kit type; give the source's type another name"]);
 });
 
 test("a review's rating is required and limited to 1-5", () => {
@@ -46,7 +65,7 @@ test("a reference metafield takes its target type from its refs", () => {
   const { metafields, metaobjects, problems } = wantedDefinitions(catalog, {});
   assert.deepEqual(problems, []);
   assert.equal(metafields[0].refType, "color_swatch");
-  assert.deepEqual(metaobjects.map((d) => d.type), ["hero_slide", "color_swatch"]);
+  assert.deepEqual(metaobjects.map((d) => d.type), ["hero_slide", "store_profile", "faq_item", "color_swatch"]);
 });
 
 const swatchType = { type: "color_swatch", name: "Colour", displayNameKey: "label", fieldDefinitions: [{ key: "label", name: "Label", type: "single_line_text_field", required: true }] };

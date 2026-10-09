@@ -1,6 +1,16 @@
 import test, { mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { pushCatalogue } from "./push.mjs";
+import { kitDefinitions } from "./definitions.mjs";
+
+/** The kit's types (hero slide, shop details, FAQ) as a store that already has them, open to the storefront. */
+const kitTypesInStore = kitDefinitions().metaobjects.map((d) => ({
+  id: `gid://mo/${d.type}`,
+  type: d.type,
+  access: { storefront: "PUBLIC_READ" },
+  capabilities: { publishable: { enabled: true } },
+  fieldDefinitions: d.fieldDefinitions.map((f) => ({ key: f.key, type: { name: f.type } })),
+}));
 
 /**
  * A fake Shopify Admin API. It proves the push's ORDER OF OPERATIONS (what it
@@ -23,7 +33,7 @@ function fakeShopify({ existingCollections = new Set(), failProductSet = false, 
       return reply({ productSet: { product: { id: `gid://prod/${variables.identifier.handle}`, handle: variables.identifier.handle, variants: { nodes: [] } }, userErrors: [] } });
     }
     if (/publishablePublish/.test(query)) return reply({ publishablePublish: { userErrors: [] } });
-    if (/metaobjectDefinitions\(/.test(query)) return reply({ metaobjectDefinitions: { nodes: [{ id: "gid://mo/hero", type: "hero_slide", access: { storefront: "PUBLIC_READ" }, capabilities: { publishable: { enabled: true } }, fieldDefinitions: [{ key: "title", type: { name: "single_line_text_field" } }, { key: "subtitle", type: { name: "multi_line_text_field" } }, { key: "image", type: { name: "file_reference" } }, { key: "product", type: { name: "product_reference" } }, { key: "link", type: { name: "single_line_text_field" } }, { key: "rank", type: { name: "number_integer" } }] }] } });
+    if (/metaobjectDefinitions\(/.test(query)) return reply({ metaobjectDefinitions: { nodes: kitTypesInStore } });
     if (/metafieldDefinitions\(/.test(query)) return reply({ metafieldDefinitions: { nodes: [] } });
     if (/metaobjectUpsert/.test(query)) return reply({ metaobjectUpsert: { metaobject: { id: `gid://entry/${variables.handle.handle}` }, userErrors: [] } });
     throw new Error(`unexpected query: ${query.slice(0, 60)}`);
@@ -147,6 +157,19 @@ test("an invalid catalogue exits before any network call", async () => {
   const broken = { collections: [], products: [{ handle: "Bad Handle", title: "x", variants: [] }] };
   await assert.rejects(pushCatalogue({ config: untracked, catalog: broken }), /exit 1/);
   assert.equal(shop.calls.length, 0);
+});
+
+test("a was-price stops the push before any network call when the owner said was-prices are not real", async () => {
+  const shop = fakeShopify();
+  mock.method(globalThis, "fetch", shop.handler);
+  mock.method(process, "exit", (code) => {
+    throw new Error(`exit ${code}`);
+  });
+  const withWasPrice = { ...catalog, products: [{ handle: "roma", title: "Roma", variants: [{ sku: "R-1", price: "499.00", compareAtPrice: "599.00" }] }] };
+  await assert.rejects(pushCatalogue({ config: { ...untracked, compareAtIsReal: false }, catalog: withWasPrice, dryRun: true }), /exit 1/);
+  assert.equal(shop.calls.length, 0);
+  const printed = console.log.mock.calls.map((c) => c.arguments.join(" ")).join("\n");
+  assert.match(printed, /roma\/R-1: compareAtPrice is set, but the owner said was-prices are not real/);
 });
 
 test("definitions are read before collections, so product fields land in readable definitions", async () => {

@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { checkWiring, smokeSite } from "./check.mjs";
 import { readFileSync } from "node:fs";
+import path from "node:path";
+import { findSdkDir } from "../shopify/sdk-dir.mjs";
 import { makeFixture } from "../test-support/fixture.mjs";
+
+// The SDK sits in src/lib/shopify here and in lib/shopify in a received repo without src/.
+const SDK = findSdkDir(process.cwd());
 
 const KIT = {
   "package.json": { name: "received", dependencies: { next: "16.2.0" } },
@@ -44,7 +49,7 @@ const go = (cart) => { window.location.href = cart.checkoutUrl; };`,
 const KIT_SDK = Object.fromEntries(
   ["cart-client.ts", "cart-provider.tsx", "cart-store.ts", "types.ts", "index.ts"].map((f) => [
     `src/lib/shopify/${f}`,
-    readFileSync(new URL(`../../src/lib/shopify/${f}`, import.meta.url), "utf8"),
+    readFileSync(path.join(SDK, f), "utf8"),
   ])
 );
 
@@ -69,13 +74,14 @@ test("a frontend with hardcoded menus, invented ratings and a card form fails th
   assert.deepEqual(r["No payment form: Shopify's checkout takes the payment"].where, ['src/components/Pay.tsx:1 name="cardNumber"']);
 });
 
-test("an unused menu file and an unused type declaration do not fail, but an unused file under components does", () => {
+test("an unused menu file and unused sample data do not fail; the same sample imported by a page does", () => {
+  const sample = `export type Product = { title: string; rating?: number };\nexport const sample: Product = { title: "A", rating: 4.5 };`;
   const r = byWhat(
     checkWiring(
       makeFixture({
         ...WIRED,
         "src/data/navigation.ts": `export const navigation = [{ label: "Shop", href: "/shop" }];`,
-        "src/types/product.ts": `export type Product = { title: string; rating?: number };`,
+        "src/types/product.ts": sample,
       })
     )
   );
@@ -85,18 +91,45 @@ test("an unused menu file and an unused type declaration do not fail, but an unu
     checkWiring(
       makeFixture({
         ...WIRED,
-        "src/types/product.ts": `export type Product = { title: string; rating?: number };`,
-        "src/app/page.tsx": `import type { Product } from "@/types/product";`,
+        "src/types/product.ts": sample,
+        "src/app/page.tsx": `import { sample } from "@/types/product";`,
       })
     )
   );
-  assert.deepEqual(imported["No invented ratings, reviews, stock or badges"].where, ["src/types/product.ts:1 rating"]);
+  assert.deepEqual(imported["No invented ratings, reviews, stock or badges"].where, ["src/types/product.ts:2 rating"]);
 });
 
 test("a wired frontend passes every check, even with its old data file still on disk and an uncached cart page", () => {
   const results = checkWiring(makeFixture(WIRED));
   assert.deepEqual(results.filter((r) => !r.ok), []);
-  assert.equal(results.length, 10);
+  assert.equal(results.length, 11);
+});
+
+test("the check fails while a claim or the shop name is typed into a component, and passes once it is gone", () => {
+  const claimed = makeFixture({
+    ...WIRED,
+    "src/components/Footer.tsx": `export const Footer = () => <footer>Lumen & Loom, free returns within 30 days. Taxes included. 4.8 stars from 214 reviews. Made in Portugal.</footer>;`,
+  });
+  const failing = checkWiring(claimed).find((r) => /typed into pages/.test(r.what));
+  assert.equal(failing.ok, false);
+  assert.match(failing.where.join("\n"), /Footer\.tsx:1 claim/);
+
+  const clean = makeFixture({ ...WIRED, "src/components/Footer.tsx": `export const Footer = ({ shop }) => <footer>© {year} {shop.name}</footer>;` });
+  assert.equal(checkWiring(clean).find((r) => /typed into pages/.test(r.what)).ok, true);
+});
+
+test("the check fails on a typed legal page and an imported shop-details module", () => {
+  const para = `<p>${"Typed policy words for this shop only. ".repeat(10)}</p>\n`;
+  const dir = makeFixture({
+    ...WIRED,
+    "src/app/privacy/page.tsx": `export default function P() { return (<main>\n${para.repeat(6)}</main>); }`,
+    "src/lib/store-info.ts": `export const STORE = {\n  address: "Street 1",\n  phone: "1",\n};`,
+    "src/app/contact/page.tsx": `import { STORE } from "../../lib/store-info";\nexport default function C() { return <p>{STORE.phone}</p>; }`,
+  });
+  const result = checkWiring(dir).find((r) => r.what.startsWith("No shop name, store claims, shop details"));
+  assert.equal(result.ok, false);
+  assert.ok(result.where.some((w) => w.startsWith("src/app/privacy/page.tsx:1 legal page")), result.where.join("\n"));
+  assert.ok(result.where.some((w) => w.startsWith("src/lib/store-info.ts:1 shop details")), result.where.join("\n"));
 });
 
 test("with the kit's own files installed, a cart that never calls Shopify still fails the cart check", () => {
@@ -176,6 +209,59 @@ export default async function P() { await ${call}({}); return null; }`;
     const r = byWhat(checkWiring(makeFixture({ ...WIRED, "src/app/page.tsx": page })));
     assert.deepEqual(r["Pages that show products are cached"].where, ['src/app/page.tsx:2 dynamic = "force-dynamic"'], call);
   }
+});
+
+const PROOF_LAYOUT = `// shop-setup-check: shows no products - analytics test page, reads an env flag per request
+export const dynamic = "force-dynamic";
+export default function L({ children }) { return children; }`;
+
+test("a file marked as showing no products is skipped by the caching check, with its reason printed", () => {
+  const r = byWhat(checkWiring(makeFixture({ ...WIRED, "src/app/proof/layout.tsx": PROOF_LAYOUT })))["Pages that show products are cached"];
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.where, []);
+  assert.deepEqual(r.notes, ["src/app/proof/layout.tsx: not checked for caching: analytics test page, reads an env flag per request"]);
+});
+
+test("without the marker the same layout fails the caching check, and there are no notes", () => {
+  const r = byWhat(checkWiring(makeFixture({ ...WIRED, "src/app/proof/layout.tsx": PROOF_LAYOUT.split("\n").slice(1).join("\n") })))["Pages that show products are cached"];
+  assert.deepEqual(r.where, ['src/app/proof/layout.tsx:1 dynamic = "force-dynamic"']);
+  assert.deepEqual(r.notes, []);
+});
+
+test("a marked page that reads Shopify itself is still checked, and the check says the marker does not hold", () => {
+  const page = `// shop-setup-check: shows no products - only a banner
+import { getProducts } from "@/lib/shopify";
+export const dynamic = "force-dynamic";
+export default async function P() { await getProducts(); return null; }`;
+  const r = byWhat(checkWiring(makeFixture({ ...WIRED, "src/app/page.tsx": page })))["Pages that show products are cached"];
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.where, ['src/app/page.tsx:3 dynamic = "force-dynamic" (marked as showing no products, but it reads Shopify)']);
+  assert.deepEqual(r.notes, []);
+});
+
+const site = (pages) => async (url) => {
+  const html = pages[new URL(url).pathname];
+  return new Response(html ?? "missing", { status: html ? 200 : 404 });
+};
+const img = '<img src="https://cdn.shopify.com/x.jpg">';
+
+test("the site check follows a /product/<handle> link", async () => {
+  const results = await smokeSite("http://shop.test", site({ "/": `${img}<a href="/product/hoodie">x</a>`, "/product/hoodie": img }));
+  assert.ok(results.every((r) => r.ok), JSON.stringify(results));
+});
+
+test("--product-path picks another product route, with or without its slashes", async () => {
+  for (const productPath of ["/item/", "item", "/item"]) {
+    const results = await smokeSite("http://shop.test", site({ "/": `${img}<a href="/items">all</a><a href="/item/chair">x</a>`, "/item/chair": img }), { productPath });
+    assert.ok(results.every((r) => r.ok), `${productPath}: ${JSON.stringify(results)}`);
+  }
+});
+
+test("a product route the home page does not link to says where it looked and how to point it elsewhere", async () => {
+  const results = await smokeSite("http://shop.test", site({ "/": `${img}<a href="/item/chair">x</a>` }));
+  const where = results.flatMap((r) => r.where).join("\n");
+  assert.match(where, /looked for \/product\/ or \/products\//);
+  assert.match(where, /--product-path=/);
 });
 
 test("smokeSite passes when the home page and a product page show Shopify images", async () => {

@@ -38,7 +38,7 @@ export async function buildCatalogue({ config, sourcesDir = SOURCES_DIR, outFile
   }
   const catalog = mergeSources(results);
   const problems = [
-    ...validateCatalog(catalog, { tracksInventory: config.tracksInventory }),
+    ...validateCatalog(catalog, { tracksInventory: config.tracksInventory, compareAtIsReal: config.compareAtIsReal }),
     ...wantedDefinitions(catalog, { wantsReviews: config.wantsReviews }).problems,
   ];
   if (problems.length) return { ok: false, problems, catalog };

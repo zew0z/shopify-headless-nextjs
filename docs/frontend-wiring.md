@@ -2,7 +2,22 @@
 
 Read this after `kit-install` and before touching the frontend's code. The rule throughout: **keep their design, change where the data comes from.** Their components, class names, layout and copy stay. You add a mapper and swap data sources.
 
-Paths below use `<app>` for the frontend's app root: `src/` when it has `src/app`, otherwise the repo root. The SDK is at `<app>lib/shopify`; import it as `@/lib/shopify` if the repo has the `@/*` alias, else with a relative path.
+Paths below use `<app>` for the frontend's app root: `src/` when it has `src/app`, otherwise the repo root. The SDK is at `<app>lib/shopify`; import it as `@/lib/shopify` if the repo has the `@/*` alias, else with a relative path. kit-install does the same in the routes it adds.
+
+Commands below are written with pnpm. In the received repo, use the repo's package manager: kit-install prints the exact install command and how to run the scripts. In an npm repo (a `package-lock.json` and no `pnpm-lock.yaml`) it adds the scripts but leaves every package, runtime and dev, to npm, so `package-lock.json` stays in step with `package.json`: run exactly the `npm install` command it printed (for example `npm install --save-dev @playwright/test@<range> typescript@<range> && npm install --save-exact @shopify/hydrogen@<version>`, with only the packages the repo lacks), then `npm run test:scripts` and `npm run shop-setup -- <command> --flags` (npm needs the `--` to pass the flags on to the script; `pnpm shop-setup <command> --flags` does not). In a pnpm repo it writes the packages into `package.json` and adds the kit's `pnpm-workspace.yaml` (its build settings) when the repo has none; then `pnpm install`.
+
+If the audit says the frontend already talks to Shopify (an older kit or its own client), read "Frontend already has Shopify code" below before installing or wiring anything.
+
+## Frontend already has Shopify code
+
+The audit prints "This frontend already talks to Shopify" with each place it found: a file sending a Storefront token, calling `/api/<version>/graphql.json`, or importing a Shopify package, and any file in `lib/shopify` that is not the kit's own copy. The kit does not migrate that code for you, and does not overwrite it.
+
+1. When kit-install reports conflicts inside `<app>lib/shopify`, nothing was written. Move the old code aside: `git mv <app>lib/shopify <app>lib/shopify-old` (kit-install prints this line with the right path). Do the same when the audit named files in `<app>lib/shopify` but their names happen not to clash with the kit's: kit-install would then not stop, and the kit's SDK would land in the same folder as the old code.
+2. Point its importers at `lib/shopify-old` (`@/lib/shopify` becomes `@/lib/shopify-old`, or the relative path), so the site builds as before.
+3. Run kit-install again.
+4. Wire as below, replacing the old calls with the kit's SDK one caller at a time. Delete `lib/shopify-old` under the dead-code rule once nothing imports it.
+
+If the frontend has its own analytics setup (Shopify analytics or other tracking code), list it for the owner; do not migrate or remove it unasked. The audit does not look for it: check by hand.
 
 ## Catalogue
 
@@ -70,6 +85,7 @@ If the frontend called its own fake API (`fetch("/api/products")`), replace the 
 | search results page | `searchProducts({ query })` |
 | search box (type-ahead) | `GET /api/search?q=...` (already installed) or `predictiveSearch(q)` on the server |
 | header and footer links, policies, info pages | see "Header, footer, policies and pages" |
+| address, phones, opening hours, bank details, FAQ | `getStoreProfile()`, `getFaq()` (see "Shop details and FAQ") |
 
 `/api/search` answers `502 { error }` when Shopify fails, so a search box must check `res.ok` before it reads `.products`.
 
@@ -85,6 +101,22 @@ Use the page functions. They return `{ products, pageInfo, filters }`; `searchPr
 - **Next page:** pass `pageInfo.endCursor` as the next `cursor`, while `pageInfo.hasNextPage` is true.
 - **Filters:** build their filter UI from `page.filters` (each has `label`, `type` and `values`; each value has `label`, `count` and `input`). `value.input` is a JSON string: `JSON.parse(value.input)` is one `ProductFilterInput`. Pass the picked ones back as `filters: [...]`. Shopify sends no filters for a collection until the owner sets up filters in the Shopify admin (Search & Discovery): when `page.filters` is empty, show no filter UI.
 - **Never filter a whole catalogue in memory** (fetch everything, then `.filter()` in the browser). Shopify filters and pages; the frontend only asks.
+- **A frontend built on an in-memory index** (its filters, facet counts or search run over one big product array): do not rebuild their filters unasked. Wire the list to the page functions, keep their filter UI where Shopify's filters can feed it, and list the rest for the owner as a decision.
+
+**Extra fields and collections on list reads.** All the list reads (`getProducts`, `getProductsPage`, `getCollectionProducts`, `getCollectionProductsPage`, `searchProducts`) take two optional settings:
+
+- `metafields: [{ namespace, key }, ...]` reads those fields for every product, in the same shape as `getProduct(handle, { metafields })`: `product.metafields[i]` follows the order you asked in, is `null` where the product has no value, and a field that links to content entries carries them in `entries`.
+- `withCollections: true` fills `product.collections.nodes` (`handle`, `title`) with the **first 10 collections** the product is in. A product in more than 10 collections shows only those 10, so do not use it as the full list. Without the setting, `product.collections` is not there.
+
+Without these settings the lists ask Shopify for no extra fields and no collections, as before. For example, a colour facet next to a collection grid, when the owner keeps colours in `custom.color` (ask the owner which field it really is):
+
+```ts
+const COLOR = { namespace: "custom", key: "color" }; // ask the owner for the real one
+const page = await getCollectionProductsPage({ handle, limit: 24, metafields: [COLOR] });
+const colors = page?.products.map((p) => p.metafields?.[0]?.entries ?? []); // [] when the product has no colour
+```
+
+That labels the products on this page. It is not a facet over the whole collection: for counts and filtering, use `page.filters` once the owner has set up filters in Search & Discovery.
 
 A "Load more" button is a client component, and client components do not call the SDK. It calls a **server action** that does:
 
@@ -107,6 +139,14 @@ The button keeps the products it has, appends the returned ones, and stores `pag
 ### 5. Caching and images
 
 - Remove `export const dynamic = "force-dynamic"`, `fetchCache = "force-no-store"`, `revalidate = 0` and `cache: "no-store"` from pages and layouts that show products. Keep them on pages that are about one visitor (cart page, account).
+- `frontend-check` counts every layout that switches caching off, because a layout wraps pages that may show products. When a layout (or another file) really shows no shop data, for example a test page that reads a flag on every request, mark it with a comment and the reason:
+
+  ```ts
+  // shop-setup-check: shows no products - analytics test page, reads an env flag per request
+  export const dynamic = "force-dynamic";
+  ```
+
+  The check then skips that file and prints `<file>: not checked for caching: <reason>` on every run, so the exception stays visible. A marked file that calls a catalogue or shop read itself (`getProduct`, `getProducts`, `getProductsPage`, `getCollection`, `getCollections`, `getCollectionProducts`, `getCollectionProductsPage`, `searchProducts`, `getProductRecommendations`, `getShop`, `getMenu`, `getPolicies`, `getPolicy`, `getPage`) does show shop data: the marker does not count there, and the check fails with "(marked as showing no products, but it reads Shopify)".
 - In `next.config.*`, add Shopify's image host:
 
 ```ts
@@ -163,6 +203,26 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 - `getPage(handle)` feeds `/pages/[handle]` (About, FAQ). Same: `null` means `notFound()`.
 - These reads are cached for one hour (Shopify sends no webhooks for them), so an edit in the admin shows up within the hour.
 - A failing read in the root layout would break every page, so the layout needs `global-error.tsx`. kit-install adds one when the frontend has none.
+
+### Policy and info pages
+
+kit-install adds two starter routes when the frontend has no folder of that name: `<app>app/policies/[handle]/page.tsx` (reads `getPolicy`) and `<app>app/pages/[handle]/page.tsx` (reads `getPage`). Each shows the title and the body, sets the page title from Shopify, and calls `notFound()` for a handle the shop has not written. They are plain on purpose: give them the frontend's own layout and styles. A frontend that already has an `app/policies` or `app/pages` folder keeps it, and gets no starter.
+
+A frontend's own typed legal page (`/privacy`, `/terms`, `/shipping`, `/returns`...) keeps its URL and its design. Replace only the typed text with the owner's policy from Shopify:
+
+```tsx
+// <app>app/privacy/page.tsx: their page, their layout
+import { notFound } from "next/navigation";
+import { getPolicy } from "@/lib/shopify";
+
+export default async function Privacy() {
+  const policy = await getPolicy("privacy-policy"); // or "terms-of-service", "shipping-policy", "refund-policy"
+  if (!policy) notFound();
+  return <div className="their-prose-class" dangerouslySetInnerHTML={{ __html: policy.body }} />;
+}
+```
+
+The body is HTML the owner wrote in the Shopify admin (Settings > Policies). `frontend-check` fails on a page under a legal-sounding route that holds long typed text (1,500 or more visible characters) and calls none of `getPolicy`, `getPolicies` or `getPage`. A policy the shop has not written yet is a `null`: tell the owner to write it in Shopify; do not keep the typed text as a fallback.
 
 ## Cart
 
@@ -239,7 +299,7 @@ Every add needs a **variant id** (`gid://shopify/ProductVariant/...`). A product
 
 ## Shopify analytics (visits and page views)
 
-Follow [shopify-analytics.md](shopify-analytics.md) to explicitly enable and configure the single official sender, consent controls, public paths, install checks and actual dashboard evidence. Mount `<ShopifyAnalytics />` once. Preserve the existing product and cart hooks; they require the documented experimental opt-in and separate verification. The Xristos reference validates visits/page views only.
+Follow [shopify-analytics.md](shopify-analytics.md) to explicitly enable and configure the single official sender, consent controls, public paths, install checks and actual dashboard evidence. Mount `<ShopifyAnalytics />` once. Preserve the existing product and cart hooks; they require the documented experimental opt-in and separate verification. The analytics release's verified scope is visits and page views only; product/cart events and checkout attribution stay unverified, and each storefront needs its own dashboard check.
 
 ## Things Shopify does not have
 
@@ -248,11 +308,49 @@ Follow [shopify-analytics.md](shopify-analytics.md) to explicitly enable and con
 | Their UI | What to do |
 |---|---|
 | Ratings, review counts, reviews | When the owner wants reviews: `getReviews({ product })` and `reviewSummary(reviews)`. Otherwise hide. |
-| Announcement bar, free-shipping line, contact email, social links | Hide and list. Open decision: whether these come from a "store settings" metaobject. |
+| Address, phones, email, opening hours, map, founding year, delivery terms, price note, bank details | `getStoreProfile()`; hide each field that is `null` (or an empty list). |
+| FAQ | `getFaq()`; hide the section when it is empty. |
+| Announcement bar, free-shipping line, guarantees, social links | Hide and list. |
 | Contact form, newsletter sign-up | POST to `/api/contact` (see the codes below). Show a plain error for `not_configured`. |
 | Hero copy, slogans and pictures | `getHeroSlides()`: the owner's slides from Content > Metaobjects. Empty: hide the hero. |
 
-`frontend-audit` finds these in their code (invented fields like `rating`, `reviewCount`, `reviews`, `stockLeft`, `badge`, `subscribable`, typed-in menus, policy text and store claims, card payment forms) and `frontend-check` fails while they still reach customers. A card form never stays: payment is Shopify's checkout (it is deleted, see "Dead code" below).
+`frontend-audit` finds these in their code and `frontend-check` fails while they still reach customers:
+
+- **Invented fields** that hold a typed value (`rating: 4.8`, `reviews: [...]`, `badge: "Sale"`, also `reviewCount`, `stockLeft`, `subscribable`). A type (`rating: number`) or a value read from somewhere (`reviews: getReviews()`) is not one.
+- **Typed-in menus, policy text and store claims** in the frontend's site data files.
+- **Typed claims in pages and components**: promises about the shop (free delivery, VAT included, returns within N days, "since 1998", made in..., star ratings, review counts, money-back, secure checkout), in English and Greek; the shop's name typed outside the one place it was found; the root layout's typed `metadata` title and description; the home page's typed headline; stock photos (Unsplash, Pexels, placeholder services), also in `next.config`.
+- **Legal pages with typed text** (see "Policy and info pages").
+- **Shop-details modules**: an exported object holding two or more shop details as typed values (address, phone, email, opening hours, IBAN, map link, founding year, VAT number...) that a page or component imports.
+- **Card payment forms.** A card form never stays: payment is Shopify's checkout (it is deleted, see "Dead code" below).
+
+Data files nothing imports, and test files, do not count. Each finding is a `file:line` to open and confirm: detection is heuristic.
+
+Fixing a finding never means redesigning. Keep their markup and styles and change only where the words come from: the name and description from `getShop()`, policies from `getPolicy()`, shop details from `getStoreProfile()`, the FAQ from `getFaq()`, the hero from `getHeroSlides()`. A claim Shopify cannot supply is hidden, not reworded, and listed for the owner. Ask the owner where pictures should come from before removing a stock photo.
+
+### Shop details and FAQ
+
+The kit always defines two content types for this (step `content-types`), and the owner fills them in under Content > Metaobjects (step `shop-details`):
+
+- `getStoreProfile()` reads the most recently saved **Shop details** entry. It returns `null` until there is an entry with a business name: hide everything it would show. Otherwise `legalName` is set, and each other field is `null` (or `[]` for `phones` and `openingHours`) when the owner left it blank: hide that bit. `bank` is `null` without an IBAN. `deliveryNote` holds delivery terms the site shows (for example "delivery cost agreed by phone"), and `priceNote` a line like "VAT included".
+- `getFaq()` reads up to 100 **FAQ** entries, in the owner's order (lowest `Order` first; entries without one go last). An entry without a question or an answer is left out. It returns `[]` until the owner adds some: hide the FAQ section.
+
+```tsx
+// <app>app/contact/page.tsx: their page, their markup
+import { getStoreProfile } from "@/lib/shopify";
+
+export default async function Contact() {
+  const shop = await getStoreProfile();
+  return (
+    <section className="their-contact-class">
+      {shop?.address && <p>{shop.address}</p>}
+      {shop?.phones.map((phone) => <a key={phone} href={`tel:${phone.replace(/\s+/g, "")}`}>{phone}</a>)}
+      {shop?.openingHours.map((line) => <p key={line}>{line}</p>)}
+    </section>
+  );
+}
+```
+
+Both are content reads: cached for an hour, they throw when Shopify fails, and they need the same token permission as the hero (see below). The kit's Admin definitions of the two types are UNVERIFIED: they have not been created on a development store yet, so check them there before relying on them. Never type a phone number, address, IBAN or opening hours into the code, not even "until the owner fills it in".
 
 ### Reviews and the hero
 
@@ -260,7 +358,7 @@ Follow [shopify-analytics.md](shopify-analytics.md) to explicitly enable and con
 - `getHeroSlides()` reads at most 20 Hero slide entries, in the owner's order. A slide's `href` is the owner's raw link text: render it as a link only when it starts with `/` or `https://`, otherwise show the slide with no link.
 - `getMetaobjects(type)` is the generic read for any other content type.
 - Content is cached for an hour and no webhook refreshes it. A new slide or review shows on the site within the hour. Tell the owner to save each entry with status Active.
-- The Storefront token needs the `unauthenticated_read_metaobjects` permission. Without it `getHeroSlides` and `getReviews` throw. Unverified: whether the Headless channel grants that permission by default. Check the token's permissions in the Headless channel.
+- The Storefront token needs the `unauthenticated_read_metaobjects` permission. Without it `getHeroSlides`, `getReviews`, `getStoreProfile` and `getFaq` throw. Unverified: whether the Headless channel grants that permission by default. Check the token's permissions in the Headless channel.
 
 ## Contact form
 
@@ -313,7 +411,20 @@ Once nothing imports or calls them, the agent deletes, in its own commit, and li
 
 - old code that reads the hardcoded data (helpers like `lib/products.ts`, components like `Stars.tsx`),
 - the fake product API route,
-- the fake checkout page and any card form.
+- the fake checkout page and any card form,
+- older Shopify code moved aside to `<app>lib/shopify-old` (see "Frontend already has Shopify code").
+
+**Before deleting a fake checkout**, copy the audit's "Payment and delivery choices typed into the checkout" into the owner list, with their `file:line`: cash on delivery (and any fee it charged), bank transfer, IRIS, instalments, PayPal, pickup from the shop. They are the owner's rules, and the page is the only record of them. The owner recreates them in Shopify in the setup steps `payments`, `cod-payment` and `local-pickup`. The audit only lists them; `frontend-check` does not fail on them. Shopify may not offer each one as the old page did (a cash-on-delivery fee, for example): that is the owner's decision, so list it, do not drop it silently.
+
+What those steps (shown by `pnpm shop-setup next`) ask of the owner:
+
+- `payments`: bank transfer as a manual payment method (Settings > Payments > Manual payment methods > Bank deposit) with the IBAN in its instructions; IRIS through a payment provider that offers it, which the owner chooses.
+- `cod-payment`: cash on delivery as a manual payment method. If the old checkout charged a fee for it, the owner decides: drop the fee, add it to the delivery rate, or use an app.
+- `local-pickup` (optional, a browser step after `shipping`): Settings > Shipping and delivery > Local pickup for the shop's location, with a pickup message. Done when a test checkout offers pickup.
+- `intake`: delivery priced case by case ("agreed by phone") is a rate with price 0 whose name says so, with the terms in the shop details' delivery note.
+- `shop-details`: the owner fills in Shop details and the FAQ under Content > Metaobjects, each entry Active.
+
+UNVERIFIED until checked on a development store: whether Shopify can charge a cash-on-delivery fee, the Admin API call for local pickup (the step uses the admin instead), and shipping rates by region inside one country (they need Shopify's province codes for that country; for Greece this is not known yet).
 
 The old data files themselves (`src/data/*`) are not deleted: list them as unused until the owner agrees. Search for imports and calls before each delete, and run `frontend-check` after.
 
@@ -335,12 +446,17 @@ What it does not prove:
 
 - Its products are not the owner's, and its prices are in CAD. Show whatever currency Shopify sends.
 - Search matches loosely, so results can include products that do not obviously fit.
-- It has no collection filters, no extra fields (metafields come back `null`), no subscriptions and only two info pages (`contact`, `liquid`). Those parts of the wiring cannot be seen working there: say "unverified" for them. It does have menus, the four policies and stock counts, and its colour options carry swatches (for example the product `hoodie`), so swatches and sold-out greying can be practised there.
+- It has no collection filters, no extra fields (metafields come back `null`), no subscriptions, no entries of the kit's content types (shop details, FAQ, hero slides, reviews) and only two info pages (`contact`, `liquid`). Those parts of the wiring cannot be seen working there: say "unverified" for them. It does have menus, the four policies and stock counts, and its colour options carry swatches (for example the product `hoodie`), so swatches and sold-out greying can be practised there.
 - A cart that no longer exists is handled (adding to it answers "The specified cart does not exist." and the cart store starts a new one), but a nonsense variant id can still give a cart, so error paths cannot be practised there.
 - Its checkout is a demo page that does not show the cart's items.
 
 Switch to the development store's settings for the real `frontend-check` sign-off, and never deploy with mock.shop settings.
 
+The store-side plans can be previewed before any store is connected, too: with no `SHOPIFY_STORE_DOMAIN`, `pnpm shop-setup shipping --dry-run` prints the shipping zone built from `store-setup.config.json` alone, and `pnpm shop-setup webhooks --dry-run --url=https://shop.example.com` plans the webhooks as if none were registered. Both write nothing, call nothing, and say what they could not check. They prove the config reads right, not that the store accepts it.
+
 ## Done means
 
-`pnpm shop-setup frontend-check` passes, `pnpm build` passes, `pnpm shop-setup frontend-check --site http://localhost:3000` passes against `pnpm start` (it loads the home page and one product page and needs Shopify images on both), and with the development store's public Storefront token in `.env.local` you clicked through a product list, a product page, add to cart, and the checkout button opened Shopify's checkout. Report anything you did not run as unverified, and the list of fields you hid because Shopify had no value for them.
+`pnpm shop-setup frontend-check` passes, `pnpm build` passes, `pnpm shop-setup frontend-check --site http://localhost:3000` passes against `pnpm start`, and with the development store's public Storefront token in `.env.local` you clicked through a product list, a product page, add to cart, and the checkout button opened Shopify's checkout. Report anything you did not run as unverified, and the list of fields you hid because Shopify had no value for them.
+
+- `--site` loads the home page and the first product page it links to, and needs Shopify images on both. It follows the first `/product/<handle>` or `/products/<handle>` link. When the site's product route is something else, name it: `pnpm shop-setup frontend-check --site http://localhost:3000 --product-path=/item/`.
+- A file marked `// shop-setup-check: shows no products - <reason>` is left out of the caching check, and the check prints it with its reason every time (see "Caching and images"). Tell the owner about each one.

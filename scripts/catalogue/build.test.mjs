@@ -40,6 +40,17 @@ test("an invalid catalogue is reported and nothing is written", async () => {
   assert.equal(existsSync(outFile), false);
 });
 
+test("a was-price fails the build when the owner said was-prices are not real, and nothing is written", async () => {
+  const source = `export default async () => ({ products: [{ handle: "a", title: "A", variants: [{ sku: "1", price: "5.00", compareAtPrice: "8.00" }] }] });`;
+  const { sourcesDir, outFile } = await setup({ "one.mjs": source });
+  const refused = await buildCatalogue({ config: { tracksInventory: false, compareAtIsReal: false }, sourcesDir, outFile });
+  assert.equal(refused.ok, false);
+  assert.deepEqual(refused.problems.filter((p) => /compareAtPrice/.test(p)).map((p) => p.split(":")[0]), ["a/1"]);
+  assert.equal(existsSync(outFile), false);
+  const allowed = await buildCatalogue({ config: { tracksInventory: false, compareAtIsReal: true }, sourcesDir, outFile });
+  assert.equal(allowed.ok, true);
+});
+
 test("files starting with _ and test files are ignored", async () => {
   const { sourcesDir, outFile } = await setup({ "_template.mjs": "throw new Error('must not load')", "x.test.mjs": "throw new Error('must not load')", "one.mjs": goodSource });
   const result = await buildCatalogue({ config: { tracksInventory: false }, sourcesDir, outFile });

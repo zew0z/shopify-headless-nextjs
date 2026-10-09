@@ -68,8 +68,71 @@ test("searchProducts results are cached for five minutes by default, and callers
   assert.equal(sentInit.next?.revalidate, undefined, "no-store and a revalidate time together make Next warn");
 });
 
+const colorField = {
+  namespace: "custom", key: "color", type: "list.metaobject_reference", value: "[]", reference: null,
+  references: { nodes: [{ __typename: "Metaobject", handle: "grey", fields: [{ key: "label", value: "Grey" }] }] },
+};
+const withExtras = { ...product, collections: { nodes: [{ handle: "sofas", title: "Sofas" }] }, metafields: [colorField, null] };
+const extras = { metafields: [{ namespace: "custom", key: "color" }, { namespace: "custom", key: "gone" }], withCollections: true };
+
+test("list reads send metafields and withCollections, and map reference entries like getProduct", async () => {
+  answer({ products: { pageInfo, edges: [{ cursor: "c", node: withExtras }] } });
+  const page = await sdk.getProductsPage({ limit: 2, ...extras });
+  assert.deepEqual(sent.variables.metafields, extras.metafields);
+  assert.equal(sent.variables.withCollections, true);
+  assert.deepEqual(page.products[0].metafields, [{ namespace: "custom", key: "color", type: "list.metaobject_reference", value: "[]", entries: [{ handle: "grey", fields: { label: "Grey" } }] }, null]);
+  assert.equal(page.products[0].collections.nodes[0].handle, "sofas");
+});
+
+test("collection and search pages carry the same extras", async () => {
+  answer({ collection: { products: { pageInfo, filters: [], edges: [{ cursor: "c", node: withExtras }] } } });
+  const collection = await sdk.getCollectionProductsPage({ handle: "men", ...extras });
+  assert.deepEqual(sent.variables.metafields, extras.metafields);
+  assert.equal(sent.variables.withCollections, true);
+  assert.deepEqual(collection.products[0].metafields[0].entries, [{ handle: "grey", fields: { label: "Grey" } }]);
+
+  answer({ search: { totalCount: 1, pageInfo, productFilters: [], edges: [{ cursor: "c", node: { __typename: "Product", ...withExtras } }, { cursor: "d", node: { __typename: "Page" } }] } });
+  const search = await sdk.searchProducts({ query: "sofa", ...extras });
+  assert.equal(sent.variables.withCollections, true);
+  assert.equal(search.products.length, 1);
+  assert.deepEqual(search.products[0].metafields[0].entries, [{ handle: "grey", fields: { label: "Grey" } }]);
+  assert.equal(search.products[0].metafields[0].reference, undefined);
+});
+
+test("without the new options the list reads send empty metafields and no collections", async () => {
+  answer({ products: { pageInfo, edges: [] } });
+  await sdk.getProductsPage();
+  assert.deepEqual(sent.variables.metafields, []);
+  assert.equal(sent.variables.withCollections, false);
+
+  answer({ collection: { products: { pageInfo, filters: [], edges: [] } } });
+  await sdk.getCollectionProductsPage({ handle: "men" });
+  assert.deepEqual(sent.variables.metafields, []);
+  assert.equal(sent.variables.withCollections, false);
+
+  answer({ search: { totalCount: 0, pageInfo, productFilters: [], edges: [] } });
+  await sdk.searchProducts({ query: "x" });
+  assert.deepEqual(sent.variables.metafields, []);
+  assert.equal(sent.variables.withCollections, false);
+});
+
+test("the three list documents spread the extras; recommendations and predictive search do not", () => {
+  for (const name of ["getProductsQuery", "getCollectionProductsQuery", "searchProductsQuery"]) {
+    const q = sdk[name];
+    assert.match(q, /\.\.\.ProductListExtras/, name);
+    assert.match(q, /fragment ProductListExtras on Product/, name);
+    assert.match(q, /\$metafields: \[HasMetafieldsIdentifier!\]! = \[\]/, name);
+    assert.match(q, /\$withCollections: Boolean! = false/, name);
+    assert.match(q, /collections\(first: 10\) @include\(if: \$withCollections\)/, name);
+  }
+  for (const name of ["getProductRecommendationsQuery", "predictiveSearchQuery"]) assert.doesNotMatch(sdk[name], /ProductListExtras|\$withCollections/, name);
+  assert.match(sdk.getProductByHandleQuery, /metafields\(identifiers: \$metafields\)\s*\{\s*namespace/);
+});
+
 test("paged reads throw when Shopify fails", async () => {
   globalThis.fetch = async () => new Response("down", { status: 500 });
   await assert.rejects(sdk.getProductsPage(), sdk.ShopifyError);
   await assert.rejects(sdk.searchProducts({ query: "x" }), sdk.ShopifyError);
+  await assert.rejects(sdk.getProductsPage({ metafields: [{ namespace: "custom", key: "color" }], withCollections: true }), sdk.ShopifyError);
+  await assert.rejects(sdk.getCollectionProductsPage({ handle: "men", withCollections: true }), sdk.ShopifyError);
 });

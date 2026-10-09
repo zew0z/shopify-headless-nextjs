@@ -27,6 +27,27 @@ test("price must be positive and compare-at must exceed it", () => {
   assert.deepEqual(validateCatalog(catalog([product({ variants: [variant({ compareAtPrice: "12.00" })] })])), []);
 });
 
+test("compare-at prices fail when the owner said they are not real", () => {
+  const catalog = {
+    collections: [],
+    products: [{ handle: "chair", title: "Chair", variants: [{ sku: "C-1", price: "100.00", compareAtPrice: "150.00" }] }],
+  };
+  assert.deepEqual(validateCatalog(catalog, { compareAtIsReal: false }), [
+    "chair/C-1: compareAtPrice is set, but the owner said was-prices are not real (compareAtIsReal is false); stop setting it in the source",
+  ]);
+  assert.deepEqual(validateCatalog(catalog, { compareAtIsReal: true }), []);
+  assert.deepEqual(validateCatalog(catalog), [], "callers that do not pass the answer keep the old rule");
+});
+
+test("without was-prices, compareAtIsReal false passes, and each variant with one is named", () => {
+  const variants = [variant({ sku: "A-1" }), variant({ sku: "A-2", compareAtPrice: "15.00" }), variant({ sku: "A-3", compareAtPrice: null })];
+  assert.deepEqual(validateCatalog(catalog([product({ variants: [variant()] })]), { compareAtIsReal: false }), []);
+  assert.deepEqual(
+    validateCatalog(catalog([product({ variants })]), { compareAtIsReal: false }).filter((p) => /compareAtPrice/.test(p)).map((p) => p.split(":")[0]),
+    ["chair/A-2"]
+  );
+});
+
 test("images must be https url strings, at most 20", () => {
   assert.match(problems(catalog([product({ images: ["http://x/a.jpg"] })])), /not https/);
   assert.match(problems(catalog([product({ images: [{ huge: "https://x" }] })])), /expected a url string/);

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { listSourceFiles } from "./walk.mjs";
-import { findFakeApis, findImporters, findInventedFields, findPaymentForms, findProductData, findSiteData } from "./sources.mjs";
+import { findFakeApis, findImporters, findInventedFields, findPaymentChoices, findPaymentForms, findProductData, findShopifyClients, findSiteData } from "./sources.mjs";
 import { makeFixture } from "../test-support/fixture.mjs";
 
 const PRODUCTS_TS = `import type { Product } from "@/types";
@@ -152,17 +152,66 @@ test("site data: exported menus, long text and claims are found; components that
   assert.equal(byFile["src/data/nav.ts"].line, 1);
 });
 
-test("invented fields are reported once per file at their first line, and not in tests", () => {
+test("invented fields are reported once per file at their first typed-in value, and not in tests", () => {
   const dir = makeFixture({
-    "src/types.ts": "export type P = {\n  title: string;\n  rating?: number;\n  reviewCount: number;\n};\nconst a = { rating: 5 };\n",
+    "src/types.ts": "export type P = {\n  title: string;\n  rating?: number;\n  reviewCount: number;\n};\nconst a = { rating: 5 };\nconst b = { rating: 4, reviewCount: 12 };\n",
     "src/Card.tsx": 'const n = open ? rating : 0;\n<Stars rating={4} />\n',
     "src/Card.test.tsx": "const a = { rating: 5 };\n",
   });
   const found = findInventedFields(dir, listSourceFiles(dir));
   assert.deepEqual(found, [
-    { file: "src/types.ts", line: 3, what: "rating" },
-    { file: "src/types.ts", line: 4, what: "reviewCount" },
+    { file: "src/types.ts", line: 6, what: "rating" },
+    { file: "src/types.ts", line: 7, what: "reviewCount" },
   ]);
+});
+
+test("an invented field counts only when it holds a literal, not a type or an expression", () => {
+  const dir = makeFixture({
+    "src/types.ts": "export type P = {\n  rating: number;\n  stockLeft?: number\n};\n",
+    "src/load.ts": "const p = { reviews: getReviews(), badge: product.badge };\n",
+    "src/data.ts": 'const a = { rating: 4.8 };\nconst b = { reviews: [{ author: "A" }] };\nconst c = { badge: "Sale", subscribable: true };\n',
+  });
+  const found = findInventedFields(dir, listSourceFiles(dir)).map((f) => `${f.file}:${f.line} ${f.what}`);
+  assert.deepEqual(found, ["src/data.ts:1 rating", "src/data.ts:2 reviews", "src/data.ts:3 badge", "src/data.ts:3 subscribable"]);
+});
+
+test("every literal key on a line counts, nested ones too; a field already seen and an expression on the same line do not", () => {
+  const dir = makeFixture({
+    "src/data.ts": [
+      'const a = { badge: "New", rating: 5, reviewCount: 3 };',
+      "const b = { rating: 4, stockLeft: count, reviewCount: 9 };",
+      'const c = { reviews: [{ author: "A", rating: 5 }], subscribable: plan.on };',
+      "const d = {stockLeft:{ total: 2 }};",
+    ].join("\n"),
+  });
+  const found = findInventedFields(dir, listSourceFiles(dir)).map((f) => `${f.line} ${f.what}`);
+  assert.deepEqual(found, ["1 badge", "1 rating", "1 reviewCount", "3 reviews", "4 stockLeft"]);
+});
+
+test("an existing Shopify client is found by its Storefront token header, API path or Shopify package; tests are not", () => {
+  const dir = makeFixture({
+    "lib/shopify/client.ts": `const x = 1;\nconst headers = { "X-Shopify-Storefront-Access-Token": token };`,
+    "lib/other.ts": `fetch(\`https://\${domain}/api/2025-01/graphql.json\`)`,
+    "lib/hydrogen.ts": `import { createStorefrontClient } from "@shopify/hydrogen-react";`,
+    "lib/nothing.ts": `export const x = 1;`,
+    "lib/client.test.ts": `const h = { "X-Shopify-Storefront-Access-Token": "t" };`,
+  });
+  // The source walk skips lib/shopify as the kit's folder; the audit hands those files in itself.
+  const files = [...listSourceFiles(dir), "lib/shopify/client.ts"];
+  assert.deepEqual(
+    findShopifyClients(dir, files).map((c) => `${c.file}:${c.line} ${c.what}`),
+    ["lib/hydrogen.ts:1 uses a Shopify package", "lib/other.ts:1 calls the Storefront API", "lib/shopify/client.ts:2 sends a Storefront token"]
+  );
+});
+
+test("a site name is not a store claim; an announcement is", () => {
+  const dir = makeFixture({
+    "src/data/site.ts": 'export const site = { siteName: "x", website: "https://x.gr" };\n',
+    "src/data/banner.ts": 'export const banner = { announcement: "Free shipping" };\n',
+  });
+  const files = listSourceFiles(dir);
+  const claims = findSiteData(dir, files, []).filter((s) => /store claim/.test(s.what)).map((s) => s.file);
+  assert.deepEqual(claims, ["src/data/banner.ts"]);
 });
 
 test("card inputs are found by name, id, placeholder or autocomplete", () => {
@@ -171,6 +220,40 @@ test("card inputs are found by name, id, placeholder or autocomplete", () => {
   });
   const found = findPaymentForms(dir, listSourceFiles(dir));
   assert.deepEqual(found.map((f) => f.line), [1, 2, 3]);
+});
+
+test("payment choices in a checkout page are found, with their fees; the same words elsewhere are not", () => {
+  const dir = makeFixture({
+    "app/checkout/page.tsx": `const METHODS = [\n  { id: "iris", label: "IRIS" },\n  { id: "cod", label: "Αντικαταβολή (+3€)" },\n  { id: "bank", label: "Τραπεζική κατάθεση" },\n];`,
+    "components/Footer.tsx": `<p>Πληρωμή με αντικαταβολή</p>`,
+  });
+  assert.deepEqual(findPaymentChoices(dir, listSourceFiles(dir)).map((c) => `${c.file}:${c.line} ${c.what}`), [
+    "app/checkout/page.tsx:2 IRIS",
+    "app/checkout/page.tsx:3 cash on delivery, fee +3€",
+    "app/checkout/page.tsx:4 bank transfer",
+  ]);
+});
+
+test("payment choices: capitals without accents, English labels, pickup, and checkout components count; comments and tests do not", () => {
+  const dir = makeFixture({
+    "src/components/CheckoutForm.tsx": [
+      "<option>ΤΡΑΠΕΖΙΚΗ ΚΑΤΑΘΕΣΗ</option>",
+      "// cash on delivery was dropped",
+      "<label>Cash on delivery (€ 2.50)</label>",
+      "<label>Παραλαβή από το κατάστημα</label>",
+      "<label>Pay in 3 installments with Klarna</label>",
+      "<label>Your email</label>",
+    ].join("\n"),
+    "src/components/PaymentMethods.tsx": `export const P = () => <p>PayPal</p>;`,
+    "src/components/checkout.test.tsx": `<label>Cash on delivery</label>`,
+  });
+  assert.deepEqual(findPaymentChoices(dir, listSourceFiles(dir)).map((c) => `${c.file}:${c.line} ${c.what}`), [
+    "src/components/CheckoutForm.tsx:1 bank transfer",
+    "src/components/CheckoutForm.tsx:3 cash on delivery, fee €2.50",
+    "src/components/CheckoutForm.tsx:4 pickup from the shop",
+    "src/components/CheckoutForm.tsx:5 instalments",
+    "src/components/PaymentMethods.tsx:1 PayPal",
+  ]);
 });
 
 test("tidy constants, fonts and size lists are not store content; a product image url is not a menu", () => {
