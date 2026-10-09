@@ -281,7 +281,12 @@ The endpoint has no rate limit. Ask the host to rate-limit `POST /api/contact` a
 
 Titles, descriptions, canonical paths and link-preview photos come from Shopify's own fields. `productMetadata` and `collectionMetadata` (in `src/lib/shopify/seo.ts`) return the full title as `<title> | <shop name>`.
 
-In the root layout set `metadataBase` from `SITE_URL`, and do not set a `title.template`, or the shop name appears twice.
+In the root layout set `metadataBase` from `NEXT_PUBLIC_SITE_URL` (the image build bakes that one, not `SITE_URL`), and do not set a `title.template`, or the shop name appears twice.
+
+```tsx
+// app/layout.tsx
+export const metadata = { metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000") };
+```
 
 ```tsx
 // app/products/[handle]/page.tsx

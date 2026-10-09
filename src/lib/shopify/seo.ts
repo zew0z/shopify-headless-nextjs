@@ -1,7 +1,9 @@
 /**
  * Page metadata and link previews from Shopify's own words and photos, so a
  * shared link shows the product, never a typed-in slogan. Set `metadataBase`
- * from SITE_URL in the root layout: canonical paths resolve against it.
+ * from NEXT_PUBLIC_SITE_URL in the root layout (the image build bakes only that
+ * one): `metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000")`.
+ * Canonical paths resolve against it.
  */
 import type { Metadata } from "next";
 import type { Collection, Product, ShopifyImage } from "./types";
