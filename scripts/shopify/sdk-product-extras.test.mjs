@@ -22,6 +22,32 @@ test("getProduct asks for the extra fields the page names, in order", async () =
   assert.equal(p.metafields[1], null);
 });
 
+test("getProduct gives the entries a reference metafield points at, one or many", async () => {
+  const swatch = (handle, label, hex) => ({ __typename: "Metaobject", handle, fields: [{ key: "label", value: label }, { key: "hex", value: hex }, { key: "note", value: "  " }] });
+  answer({
+    product: {
+      id: "p", handle: "a",
+      metafields: [
+        { namespace: "custom", key: "color", type: "list.metaobject_reference", value: '["gid://1","gid://2"]', reference: null, references: { nodes: [swatch("grey", "Grey", "#888888"), { __typename: "Product" }, swatch("blue", "Blue", "#0000ff")] } },
+        { namespace: "custom", key: "main", type: "metaobject_reference", value: "gid://1", reference: swatch("grey", "Grey", "#888888"), references: null },
+        { namespace: "custom", key: "material", type: "single_line_text_field", value: "Wool", reference: null, references: null },
+        null,
+      ],
+    },
+  });
+  const p = await sdk.getProduct("a", { metafields: [{ namespace: "custom", key: "color" }, { namespace: "custom", key: "main" }, { namespace: "custom", key: "material" }, { namespace: "custom", key: "gone" }] });
+  assert.match(sent.query, /references\(first: 25\)/);
+  assert.match(sent.query, /reference \{/);
+  assert.deepEqual(p.metafields[0].entries, [
+    { handle: "grey", fields: { label: "Grey", hex: "#888888", note: null } },
+    { handle: "blue", fields: { label: "Blue", hex: "#0000ff", note: null } },
+  ]);
+  assert.deepEqual(p.metafields[1].entries, [{ handle: "grey", fields: { label: "Grey", hex: "#888888", note: null } }]);
+  assert.deepEqual(p.metafields[2].entries, []);
+  assert.equal(p.metafields[2].value, "Wool");
+  assert.equal(p.metafields[3], null);
+});
+
 test("getProduct with no extra fields sends an empty list", async () => {
   answer({ product: null });
   await sdk.getProduct("a");

@@ -126,6 +126,14 @@ images: { remotePatterns: [{ protocol: "https", hostname: "cdn.shopify.com", pat
   ```
 
   A `null` entry means this product has no value: hide that bit of UI.
+
+  When a field links to content entries (swatches, materials), `product.metafields[i].entries` holds them: each has a `handle` and `fields`, for example each swatch's label and hex:
+
+  ```ts
+  const swatches = product?.metafields?.[0]?.entries ?? []; // [{ handle: "grey", fields: { label: "Grey", hex: "#888888" } }]
+  ```
+
+  A single reference gives one entry, a list gives all of them (up to 25). A blank field is `null`. For other field types `entries` is `[]`.
 - **Subscriptions:** show them only from `product.sellingPlanGroups.nodes[].sellingPlans.nodes` (name, description, `priceAdjustments`). `getProduct` does not ask Shopify for plan prices, so show the plan's name, description and adjustment exactly as Shopify states it (a percent or a fixed amount), show no computed price, and let the cart's cost show the real price. Never work out a subscription discount in the browser. The cart line gets the plan: `{ merchandiseId, quantity, sellingPlanId }`. When `product.requiresSellingPlan` is true, the shopper must pick a plan before adding; do not offer a one-time purchase.
 - **Stock:** "Only N left" comes only from `getProductStock(handle)` (a server component call; it answers `{ [variantId]: quantity | null }`). Shopify answers only when the Storefront token has the `unauthenticated_read_product_inventory` scope. Without it the call throws a message naming the scope. Catch that one call, hide the stock line, and tell the owner. The rest of the page does not depend on it. Never show a stock number the owner did not ask for or Shopify did not send.
 

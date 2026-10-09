@@ -390,6 +390,22 @@ export const getProductByHandleQuery = /* GraphQL */ `
         key
         type
         value
+        reference {
+          __typename
+          ... on Metaobject {
+            handle
+            fields { key value }
+          }
+        }
+        references(first: 25) {
+          nodes {
+            __typename
+            ... on Metaobject {
+              handle
+              fields { key value }
+            }
+          }
+        }
       }
     }
   }

@@ -62,6 +62,14 @@ export interface Metafield {
   key: string;
   type: string;
   value: string;
+  /** The content entries a reference metafield points at (a swatch's label and hex, say); [] for other types. */
+  entries?: LinkedEntry[];
+}
+
+/** An entry linked from a product metafield: its handle and its fields as plain text (null when blank). */
+export interface LinkedEntry {
+  handle: string;
+  fields: Record<string, string | null>;
 }
 
 export interface MetafieldIdentifier {

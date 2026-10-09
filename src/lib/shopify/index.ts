@@ -24,8 +24,10 @@ import {
   Filter,
   ProductPage,
   SearchProductsOptions,
+  Metafield,
   MetafieldIdentifier,
 } from "./types";
+import { toLinkedEntries, type RawLinked } from "./metaobjects";
 import {
   shopQuery,
   shopAnalyticsQuery,
@@ -268,8 +270,9 @@ export async function getProduct(
 ): Promise<Product | null> {
   requireShopify();
 
+  type RawMetafield = Metafield & { reference?: RawLinked | null; references?: { nodes: RawLinked[] } | null };
   const res = await shopifyFetch<{
-    product: Product | null;
+    product: (Omit<Product, "metafields"> & { metafields?: Array<RawMetafield | null> }) | null;
   }>({
     query: getProductByHandleQuery,
     variables: { handle, metafields: options?.metafields ?? [] },
@@ -278,7 +281,16 @@ export async function getProduct(
     revalidate: options?.revalidate,
   });
 
-  return res.body.data?.product || null;
+  const product = res.body.data?.product;
+  if (!product) return null;
+  return {
+    ...product,
+    metafields: product.metafields?.map((m) => {
+      if (!m) return null;
+      const { reference, references, ...rest } = m;
+      return { ...rest, entries: toLinkedEntries(reference, references) };
+    }),
+  };
 }
 
 /**

@@ -3,7 +3,7 @@
  * slides the owner types into the Shopify admin. Browser-safe: no fetch here.
  * Anything incomplete is dropped, never filled in with made-up words or pictures.
  */
-import type { EntryProduct, HeroSlide, MetaobjectEntry, MetaobjectField, Review, ShopifyImage } from "./types";
+import type { EntryProduct, HeroSlide, LinkedEntry, MetaobjectEntry, MetaobjectField, Review, ShopifyImage } from "./types";
 
 interface RawField {
   key: string;
@@ -14,6 +14,15 @@ interface RawField {
 export interface RawEntry { handle: string; updatedAt: string; fields: RawField[] }
 
 const text = (v: string | null | undefined) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+export type RawLinked = { __typename: string; handle?: string; fields?: Array<{ key: string; value: string | null }> };
+const toLinkedEntry = (n: RawLinked): LinkedEntry => ({ handle: n.handle!, fields: Object.fromEntries((n.fields ?? []).map((x) => [x.key, text(x.value)])) });
+
+/** The entries a reference field points at: one for a single reference, all for a list. Other kinds of target are dropped. */
+export function toLinkedEntries(reference: RawLinked | null | undefined, references: { nodes: RawLinked[] } | null | undefined): LinkedEntry[] {
+  const nodes = references ? references.nodes : reference ? [reference] : [];
+  return nodes.filter((n) => n.__typename === "Metaobject").map(toLinkedEntry);
+}
 
 export function toEntry(raw: RawEntry): MetaobjectEntry {
   const fields: Record<string, MetaobjectField> = {};
@@ -26,7 +35,7 @@ export function toEntry(raw: RawEntry): MetaobjectEntry {
       collection: ref?.__typename === "Collection" ? { handle: ref.handle!, title: ref.title! } : null,
       entries: (f.references?.nodes ?? [])
         .filter((n) => n.__typename === "Metaobject")
-        .map((n) => ({ handle: n.handle!, fields: Object.fromEntries((n.fields ?? []).map((x) => [x.key, text(x.value)])) })),
+        .map(toLinkedEntry),
     };
   }
   return { handle: raw.handle, updatedAt: raw.updatedAt, fields };
