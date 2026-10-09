@@ -287,6 +287,7 @@ switch (command) {
     if (plan.agentsNote) info("agent instructions to add: the # Store setup block");
     for (const e of plan.extras) info(`added: ${e.to} (a starting point, edit to taste)`);
     if (plan.keptErrorPage) info("kept their error page");
+    if (plan.deployNote) warn(plan.deployNote);
     if (hasConflicts(plan)) {
       for (const c of plan.conflicts) bad(`${c.to}: ${c.why}`);
       for (const c of plan.packageJson.conflicts) bad(`package.json ${c.key} is "${c.have}", the kit needs "${c.want}"`);

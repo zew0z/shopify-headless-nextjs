@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { findSdkDir } from "../shopify/sdk-dir.mjs";
-import { ERROR_PAGE, GLOBAL_ERROR_PAGE } from "./templates.mjs";
+import { DEPLOY_WORKFLOW, DOCKERIGNORE, ERROR_PAGE, GLOBAL_ERROR_PAGE, dockerfile } from "./templates.mjs";
 
 // Paths under app/api/. "[version]/graphql.json" is the Storefront API proxy Shopify's privacy script needs.
 const ROUTES = ["cart", "revalidate", "health", "search", "contact", "[version]/graphql.json", "shopify/analytics/config"];
@@ -107,7 +107,15 @@ export function planKitInstall({ kitRoot, target, appRoot }) {
   if (!hasPage("global-error")) extras.push({ to: `${appRoot}app/global-error.tsx`, text: GLOBAL_ERROR_PAGE });
   if (!existsSync(path.join(target, "CLAUDE.md"))) extras.push({ to: "CLAUDE.md", text: "@AGENTS.md\n" });
 
-  return { write, same, conflicts, packageJson: { add, conflicts: pkgConflicts }, gitignore, agentsNote, extras, keptErrorPage: hasPage("error") };
+  // NOTIXV deploy (Docker image -> Artifact Registry -> Flux), only where the repo has its own nothing.
+  const pm = existsSync(path.join(target, "package-lock.json")) && !existsSync(path.join(target, "pnpm-lock.yaml")) ? "npm" : "pnpm";
+  if (!existsSync(path.join(target, "Dockerfile"))) extras.push({ to: "Dockerfile", text: dockerfile(pm) });
+  if (!existsSync(path.join(target, ".dockerignore"))) extras.push({ to: ".dockerignore", text: DOCKERIGNORE });
+  if (!existsSync(path.join(target, ".github/workflows/deploy-image.yaml"))) extras.push({ to: ".github/workflows/deploy-image.yaml", text: DEPLOY_WORKFLOW });
+  const nextConfig = ["ts", "mjs", "js"].map((ext) => path.join(target, `next.config.${ext}`)).find((f) => existsSync(f));
+  const deployNote = nextConfig && /output:\s*["']standalone["']/.test(read(nextConfig)) ? null : 'Set output: "standalone" in next.config: the Dockerfile copies .next/standalone.';
+
+  return { write, same, conflicts, packageJson: { add, conflicts: pkgConflicts }, gitignore, agentsNote, extras, deployNote, keptErrorPage: hasPage("error") };
 }
 
 export const hasConflicts = (plan) => plan.conflicts.length > 0 || plan.packageJson.conflicts.length > 0;

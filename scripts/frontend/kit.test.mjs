@@ -6,6 +6,8 @@ import { hasConflicts, kitFiles, planKitInstall } from "./kit.mjs";
 import { makeFixture } from "../test-support/fixture.mjs";
 
 const kitRoot = process.cwd();
+// The NOTIXV deploy files are covered by their own tests below; these ignore them.
+const notDeploy = (e) => !["Dockerfile", ".dockerignore"].includes(e.to) && !e.to.startsWith(".github/");
 const received = (extra = {}) =>
   makeFixture({
     "package.json": { name: "received", scripts: { dev: "next dev", build: "next build" }, dependencies: { next: "16.2.0" } },
@@ -113,7 +115,7 @@ test("a clean repo has no conflicts", () => {
 test("the plan adds error pages and a CLAUDE.md pointer only where missing", () => {
   const target = received({ "app/error.tsx": "mine" });
   const plan = planKitInstall({ kitRoot, target, appRoot: "" });
-  const extras = plan.extras.map((e) => e.to).sort();
+  const extras = plan.extras.filter(notDeploy).map((e) => e.to).sort();
   assert.deepEqual(extras, ["CLAUDE.md", "app/global-error.tsx"]);
   assert.match(plan.extras.find((e) => e.to === "CLAUDE.md").text, /@AGENTS\.md/);
   assert.match(plan.extras.find((e) => e.to === "app/global-error.tsx").text, /<html/);
@@ -124,7 +126,7 @@ test("the plan adds error pages and a CLAUDE.md pointer only where missing", () 
 
 test("the error pages go under the app root, and an existing CLAUDE.md is left alone", () => {
   const plan = planKitInstall({ kitRoot, target: received({ "src/app/page.tsx": "", "CLAUDE.md": "# Mine\n" }), appRoot: "src/" });
-  assert.deepEqual(plan.extras.map((e) => e.to).sort(), ["src/app/error.tsx", "src/app/global-error.tsx"]);
+  assert.deepEqual(plan.extras.filter(notDeploy).map((e) => e.to).sort(), ["src/app/error.tsx", "src/app/global-error.tsx"]);
   assert.equal(plan.keptErrorPage, false);
 });
 
@@ -136,4 +138,26 @@ test("both app layouts receive the full analytics runtime and exact production d
     assert.equal(plan.packageJson.add.dependencies["@shopify/hydrogen"],"2026.10.0-preview.4");assert.ok(plan.write.some(w=>w.to==="docs/shopify-analytics.md"));
   }
   const plan=planKitInstall({kitRoot,target:received({"package.json":{dependencies:{next:"16","@shopify/hydrogen":"latest"}}}),appRoot:""});assert.ok(plan.packageJson.conflicts.some(c=>c.key==="dependencies.@shopify/hydrogen"));
+});
+
+test("kit-install adds the NOTIXV deploy files when the repo has none, for its package manager", () => {
+  const target = makeFixture({ "package.json": { name: "shop" }, "pnpm-lock.yaml": "", "next.config.ts": "export default {};\n" });
+  const plan = planKitInstall({ kitRoot: process.cwd(), target, appRoot: "" });
+  const docker = plan.extras.find((e) => e.to === "Dockerfile");
+  assert.match(docker.text, /pnpm install --frozen-lockfile/);
+  assert.match(docker.text, /COPY --from=build \/app\/\.next\/standalone/);
+  assert.match(docker.text, /USER 1000/);
+  const workflow = plan.extras.find((e) => e.to === ".github/workflows/deploy-image.yaml");
+  assert.match(workflow.text, /IMAGE: \$\{\{ github\.event\.repository\.name \}\}/);
+  assert.match(plan.extras.find((e) => e.to === ".dockerignore").text, /^node_modules$/m);
+  assert.match(plan.deployNote, /output: "standalone"/);
+});
+
+test("npm repos get npm ci; existing deploy files and a standalone config are left alone", () => {
+  const npm = makeFixture({ "package.json": { name: "shop" }, "package-lock.json": "{}" });
+  assert.match(planKitInstall({ kitRoot: process.cwd(), target: npm, appRoot: "" }).extras.find((e) => e.to === "Dockerfile").text, /npm ci/);
+  const own = makeFixture({ "package.json": { name: "shop" }, Dockerfile: "FROM x\n", ".github/workflows/deploy-image.yaml": "x", "next.config.ts": 'export default { output: "standalone" };\n' });
+  const plan = planKitInstall({ kitRoot: process.cwd(), target: own, appRoot: "" });
+  assert.equal(plan.extras.some((e) => e.to === "Dockerfile" || e.to.startsWith(".github/")), false);
+  assert.equal(plan.deployNote, null);
 });
