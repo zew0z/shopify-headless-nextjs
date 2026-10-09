@@ -20,7 +20,7 @@ import { listSourceFiles } from "./walk.mjs";
 
 const read = (dir, file) => readFileSync(path.join(dir, file), "utf8");
 // The SDK of the kit this script belongs to: the kit repo's own, or the copy kit-install put into a received repo.
-const KIT_SDK = findSdkDir(fileURLToPath(new URL("../..", import.meta.url)));
+const KIT_SDK = findSdkDir(fileURLToPath(new URL("../..", import.meta.url))) ?? findSdkDir(process.cwd());
 const eachLine = (dir, files, fn) => {
   for (const file of files) read(dir, file).split("\n").forEach((text, i) => fn(file, i + 1, text));
 };
@@ -53,7 +53,7 @@ export function findCart(dir, files) {
     if (stored && !cartFiles.some((c) => c.file === file && c.why === "cart kept in localStorage")) {
       cartFiles.push({ file, line, why: "cart kept in localStorage" });
     }
-    if (!/\.[jt]sx?$/.test(file)) return;
+    if (!/\.[jt]sx?$|\.astro$/.test(file)) return;
     const aria = ARIA_CHECKOUT.exec(text);
     if (aria) checkoutButtons.push({ file, line, text: aria[1] });
     for (const label of jsxTexts(text)) {
@@ -115,6 +115,7 @@ export function findHardcodedMoney(dir, files) {
 
 /** Shopify serves product images from cdn.shopify.com; next/image refuses hosts it was not told about. */
 export function checkImages(dir) {
+  if (detectStack(dir).framework === "astro") return { ok: true, note: "Astro native img tags can load Shopify CDN images. Verify CSP and any astro:assets remote image rules during the browser rehearsal." };
   const config = ["next.config.ts", "next.config.mjs", "next.config.js", "next.config.cjs"].find((f) => existsSync(path.join(dir, f)));
   if (!config) return { ok: false, note: "No next.config file, so next/image will refuse Shopify's images. Add one allowing cdn.shopify.com." };
   const text = read(dir, config);

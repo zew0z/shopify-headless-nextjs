@@ -13,14 +13,16 @@ import { auditFrontend, summariseAudit } from "../frontend/audit.mjs";
 import { hasConflicts, planKitInstall } from "../frontend/kit.mjs";
 import { applyKitInstall } from "../frontend/install.mjs";
 import { checkWiring, smokeSite } from "../frontend/check.mjs";
-import { STEPS } from "./steps.mjs";
+import { STEPS as BASE_STEPS } from "./steps.mjs";
+import { stepsForFramework } from "./framework-steps.mjs";
+import { detectStack } from "../frontend/stack.mjs";
 import { loadState, markDone, saveState } from "./state.mjs";
 import { loadConfig } from "./config.mjs";
 import { applyShipping } from "./shipping.mjs";
 import { adminGraphQL, allScopes, grantedScopes, missingScopes, resolveAdminToken, servedVersion } from "../shopify/admin-client.mjs";
 import { REDIRECT_PORT, redirectUri, runOAuth } from "../shopify/oauth.mjs";
 import { listWebhooks, registerWebhooks, webhookSecretStatus } from "../shopify/webhooks.mjs";
-import { loadSdkDocuments, validateDocuments } from "../shopify/validate-storefront.mjs";
+import { loadSdkDocuments, loadAstroDocuments, validateDocuments } from "../shopify/validate-storefront.mjs";
 import { shopMismatches, versionStatus } from "../shopify/version.mjs";
 import { bad, heading, info, mask, ok, shopifyEnv, readEnv, upsertEnv, warn } from "../shopify/env.mjs";
 
@@ -30,6 +32,8 @@ const STATE_FILE = "store-setup.state.json";
 const { command, args, flags } = parseArgs(process.argv.slice(2));
 
 const state = loadState(STATE_FILE);
+const framework = detectStack(process.cwd()).framework;
+const STEPS = stepsForFramework(BASE_STEPS, framework);
 
 switch (command) {
   case "status": {
@@ -232,13 +236,15 @@ switch (command) {
   }
   case "validate-queries": {
     const version = typeof flags.version === "string" ? flags.version : shopifyEnv().apiVersion;
-    const results = await validateDocuments({ version, documents: loadSdkDocuments() });
+    if (flags.framework && !["astro", "next"].includes(flags.framework)) { bad("--framework must be astro or next"); process.exit(1); }
+    const results = await validateDocuments({ version, documents: flags.framework === "astro" ? loadAstroDocuments() : loadSdkDocuments() });
     for (const r of results) (r.ok ? ok : bad)(`${r.name}${r.ok ? "" : ": " + r.problems.join("; ")}`);
     const failed = results.filter((r) => !r.ok);
     info(`${results.length - failed.length} of ${results.length} documents valid against ${version}`);
     process.exit(failed.length ? 1 : 0);
   }
   case "e2e": {
+    if (framework === "astro") { bad("Use the Astro site's browser/cart rehearsal in docs/frontend-wiring-astro.md; Next Playwright routes do not apply. This step remains unverified."); process.exit(1); }
     const run = spawnSync("pnpm", ["exec", "playwright", "test"], { stdio: "inherit" });
     if (run.status === 0) info("Skipped tests are not passes. Check the output above for skips before marking this step done.");
     process.exit(run.status ?? 1);
@@ -313,7 +319,7 @@ switch (command) {
     const { changed } = applyKitInstall(plan, target, { audit: audit.stack.reason, install: `kit ${kitVersion}` });
     ok(changed ? `kit ${kitVersion} installed (${changed} changes)` : "kit already installed, nothing changed");
     const run = plan.packageManager === "npm" ? "npm run" : "pnpm";
-    info(`Next, in ${target}: ${plan.packageJson.installCommand}, then ${run} test:scripts, then ${run} shop-setup next.`);
+    info(`Next, in ${target}: ${plan.packageJson.installCommand}, then ${run} ${plan.framework === "astro" ? "test:shopify" : "test:scripts"}, then ${run} shop-setup next.`);
     info("store-setup.state.json is the setup's progress record: commit it. frontend-audit.json is a scratch file and is ignored by git.");
     break;
   }

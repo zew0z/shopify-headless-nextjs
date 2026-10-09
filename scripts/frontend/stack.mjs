@@ -12,7 +12,7 @@ function majorOf(range) {
 
 /**
  * What a received frontend is built with, and whether the kit can be installed
- * into it as it is. The kit needs Next.js 16+ with the App Router.
+ * into it as it is. Supported paths are Next.js 16+ App Router and Astro 7 SSR.
  */
 export function detectStack(dir) {
   const pkg = readJson(path.join(dir, "package.json"));
@@ -20,6 +20,19 @@ export function detectStack(dir) {
   if (!pkg) return { ...base, reason: "No package.json: this is not a JavaScript app the kit can be installed into." };
 
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  if (deps.astro && !deps.next) {
+    const astroMajor = majorOf(deps.astro) ?? majorOf(readJson(path.join(dir, "node_modules/astro/package.json"))?.version ?? "");
+    const configFile = ["ts", "mjs", "js"].map((ext) => path.join(dir, `astro.config.${ext}`)).find(existsSync);
+    const config = configFile ? readFileSync(configFile, "utf8") : "";
+    const stack = { ...base, framework: "astro", astroMajor, router: "pages", appRoot: "src/" };
+    if (astroMajor !== 7) return { ...stack, reason: "The Astro adapter supports verified Astro 7 projects. Install Astro 7 before connecting this frontend." };
+    if (!existsSync(path.join(dir, "src/pages"))) return { ...stack, reason: "No src/pages folder found for Astro's routes." };
+    const hasAdapter = Object.keys(deps).some((name) => /^@astrojs\/(node|cloudflare|netlify|vercel)$/.test(name));
+    if (!hasAdapter || !/\badapter\s*:/.test(config) || !/\boutput\s*:\s*["']server["']/.test(config)) {
+      return { ...stack, reason: "Astro Shopify cart routes need output: server and a configured SSR adapter. Keep existing security settings and configure an adapter before kit-install." };
+    }
+    return { ...stack, supported: true, reason: "Astro 7, server output with an SSR adapter, code under src/. Follow docs/frontend-wiring-astro.md." };
+  }
   if (!deps.next) {
     const framework = deps.astro ? "astro" : deps["@remix-run/react"] || deps["react-router"] ? "remix" : deps.gatsby ? "gatsby" : deps.vite ? "vite" : "unknown";
     return {

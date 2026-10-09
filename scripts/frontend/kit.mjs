@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { findSdkDir } from "../shopify/sdk-dir.mjs";
 import { readAliases } from "./sources.mjs";
+import { detectStack } from "./stack.mjs";
+import { planAstroInstall } from "./astro-kit.mjs";
 import { DEPLOY_WORKFLOW, DOCKERIGNORE, ERROR_PAGE, GLOBAL_ERROR_PAGE, dockerfile, infoPage, policyPage } from "./templates.mjs";
 
 // Paths under app/api/. "[version]/graphql.json" is the Storefront API proxy Shopify's privacy script needs.
@@ -81,6 +83,7 @@ export function kitFiles(kitRoot, appRoot, target) {
 
 /** What installing the kit would change in the target repo. Reads only; writes nothing. */
 export function planKitInstall({ kitRoot, target, appRoot }) {
+  if (detectStack(target).framework === "astro") return planAstroInstall({ kitRoot, target });
   const pm = existsSync(path.join(target, "package-lock.json")) && !existsSync(path.join(target, "pnpm-lock.yaml")) ? "npm" : "pnpm";
   const write = [];
   const same = [];

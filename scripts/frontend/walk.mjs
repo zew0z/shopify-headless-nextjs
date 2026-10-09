@@ -5,7 +5,7 @@ const SKIP_DIRS = new Set(["node_modules", "dist", "build", "out", "public", "co
 // The kit's own code, once installed, is not part of the received frontend.
 const KIT_DIRS = new Set(["scripts", "e2e", "lib/shopify", "src/lib/shopify"]);
 const KIT_FILES = /^(store-setup\..*\.json|frontend-audit\.json|playwright\.config\.mjs)$/;
-const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".json"]);
+const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".json", ".astro"]);
 const SKIP_FILES = /^(package(-lock)?\.json|tsconfig.*\.json|.*\.d\.ts)$/;
 
 /** Every source file of a received frontend, as sorted repo-relative paths with forward slashes. */

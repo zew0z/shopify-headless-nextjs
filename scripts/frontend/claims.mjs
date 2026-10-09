@@ -4,9 +4,9 @@ import { TEST_FILE } from "./sources.mjs";
 
 const read = (dir, file) => readFileSync(path.join(dir, file), "utf8");
 const COMMENT = /^\s*(\/\/|\/\*|\*)/;
-const ROOT_LAYOUT = /^(src\/)?app\/layout\.[jt]sx?$/;
-const HOME_PAGE = /^(src\/)?app\/page\.[jt]sx?$/;
-const PAGE_OR_COMPONENT = /^(src\/)?(app|components)\//;
+const ROOT_LAYOUT = /^(?:(src\/)?app\/layout\.[jt]sx?|src\/layouts\/[^/]+\.astro)$/;
+const HOME_PAGE = /^(?:(src\/)?app\/page\.[jt]sx?|src\/pages\/(?:\[lang\]\/)?index\.astro)$/;
+const PAGE_OR_COMPONENT = /^(src\/)?(app|pages|components|modules)\//;
 
 /** Words that make a promise about the shop. Each is the owner's to make, in Shopify, not the frontend's. */
 const CLAIMS = [
@@ -37,6 +37,7 @@ const CODE_ATTRIBUTE = /\b(className|class|id|htmlFor|key|href|src|type|rel|targ
 const STRING = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
 
 const LEGAL_ROUTE = /^(src\/)?app\/(?:.+\/)?(privacy|terms|shipping|delivery|returns?|refunds?|legal|cookies?|polic\w*|oroi|aporrito)[^/]*\/(?:.+\/)?page\.[jt]sx$/i;
+const ASTRO_LEGAL_ROUTE = /^src\/pages\/(?:.+\/)?(privacy|terms|shipping|delivery|returns?|refunds?|legal|cookies?|polic\w*|oroi|aporrito)[^/]*\.astro$/i;
 const READS_SHOPIFY_TEXT = /\b(getPolicy|getPolicies|getPage)\s*\(/;
 const LEGAL_MIN_CHARS = 1500;
 const SHOP_DETAIL_KEYS = /^(address|street|phone|phones|mobile|tel|email|hours|openingHours|opening_hours|iban|beneficiary|coords|mapsUrl|mapUrl|foundedYear|vatNumber|afm)$/;
@@ -129,7 +130,7 @@ function metadataLines(lines) {
 
 /** A page under a legal-sounding route with long typed text and no Shopify read: the policy belongs in Shopify. */
 function legalPages(dir, files, add) {
-  for (const file of files.filter((f) => LEGAL_ROUTE.test(f))) {
+  for (const file of files.filter((f) => LEGAL_ROUTE.test(f) || ASTRO_LEGAL_ROUTE.test(f))) {
     const text = read(dir, file);
     if (READS_SHOPIFY_TEXT.test(text)) continue;
     const chars = text.split("\n").map(visibleText).join(" ").length;
@@ -167,7 +168,7 @@ function shopDetailModules(dir, files, importers, add) {
 export function findTypedClaims(dir, files, { skip = [], importers } = {}) {
   const brand = findBrand(dir, files);
   const kept = files.filter((f) => !skip.includes(f));
-  const scanned = kept.filter((f) => !TEST_FILE.test(f) && (/\.[jt]sx$/.test(f) || (PAGE_OR_COMPONENT.test(f) && /\.[cm]?[jt]s$/.test(f))));
+  const scanned = kept.filter((f) => !TEST_FILE.test(f) && (/\.[jt]sx$|\.astro$/.test(f) || (PAGE_OR_COMPONENT.test(f) && /\.[cm]?[jt]s$/.test(f))));
   const found = [];
   const seen = new Set();
   const add = (file, line, kind, what) => {
@@ -185,7 +186,7 @@ export function findTypedClaims(dir, files, { skip = [], importers } = {}) {
 
   for (const file of scanned) {
     const lines = read(dir, file).split("\n");
-    const jsx = /\.[jt]sx$/.test(file);
+    const jsx = /\.[jt]sx$|\.astro$/.test(file);
     if (ROOT_LAYOUT.test(file)) {
       for (const [i, text] of metadataLines(lines)) {
         const m = /^\s*(title|default|description)\s*:\s*(["'`])([^"'`]*)\2/.exec(text);

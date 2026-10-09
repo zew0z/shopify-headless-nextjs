@@ -9,7 +9,7 @@
  * Run it before changing the SDK's API version, and after:
  *   pnpm shop-setup validate-queries --version=2026-07
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { findSdkDir } from "./sdk-dir.mjs";
@@ -31,11 +31,21 @@ function evaluate(file, imports) {
 }
 
 export function loadSdkDocuments(dir = SDK_DIR) {
+  const astro = [path.join(dir, "astro/queries.ts"), path.join(process.cwd(), "adapters/astro/queries.ts")].find(existsSync);
+  if (!existsSync(path.join(dir, "queries.ts")) && astro) {
+    return Object.entries(evaluate(astro, {})).filter(([, query]) => typeof query === "string" && /^\s*(query|mutation)\b/.test(query)).map(([name, query]) => ({ name, query }));
+  }
   const queries = evaluate(path.join(dir, "queries.ts"), {});
   const mutations = evaluate(path.join(dir, "mutations.ts"), { "./queries": queries });
   return Object.entries({ ...queries, ...mutations })
     .filter(([, value]) => typeof value === "string" && /^\s*(query|mutation)\b/.test(value))
     .map(([name, query]) => ({ name, query }));
+}
+
+export function loadAstroDocuments(dir) {
+  const root = dir ?? [path.join(process.cwd(), "adapters/astro"), path.join(SDK_DIR, "astro")].find((p) => existsSync(path.join(p, "queries.ts")));
+  if (!root) throw new Error("Astro query documents are not installed.");
+  return Object.entries(evaluate(path.join(root, "queries.ts"), {})).filter(([, query]) => typeof query === "string" && /^\s*(query|mutation)\b/.test(query)).map(([name, query]) => ({ name, query }));
 }
 
 /** Every declared variable gets a value no type accepts, so Shopify validates the document and then stops. */

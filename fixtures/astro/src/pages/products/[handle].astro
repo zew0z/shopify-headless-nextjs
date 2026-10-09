@@ -1,0 +1,8 @@
+---
+import { commerce } from "../../fixture";
+export const prerender = false;
+const product = await commerce.getProduct(Astro.params.handle ?? "", "en");
+if (!product) return new Response("Not found", { status: 404 });
+Astro.cache.set({ maxAge: 30, tags: ["commerce"] });
+---
+<html lang="en"><head><title>{product.title}</title></head><body><h1>{product.title}</h1><span>{product.price.amount} {product.price.currencyCode}</span></body></html>

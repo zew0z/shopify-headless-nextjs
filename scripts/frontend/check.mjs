@@ -4,6 +4,7 @@ import { findSdkDir } from "../shopify/sdk-dir.mjs";
 import { auditFrontend, isKitRoute } from "./audit.mjs";
 import { findImporters } from "./sources.mjs";
 import { listSourceFiles } from "./walk.mjs";
+import { checkAstroWiring } from "./astro-check.mjs";
 
 const CATALOGUE_CALL = /\b(getProducts?|getProductsPage|getCollections?|getCollectionProducts|getCollectionProductsPage|searchProducts|getProductRecommendations|getShop|getMenu|getPolicies|getPolicy|getPage)\s*\(/;
 const LAYOUT = /^(src\/)?app\/(.+\/)?layout\.[jt]sx?$/;
@@ -21,6 +22,7 @@ const NO_PRODUCTS_MARK = /\/\/\s*shop-setup-check:\s*shows no products\s*-\s*(.+
  */
 export function checkWiring(dir) {
   const audit = auditFrontend(dir);
+  if (audit.stack.framework === "astro") return checkAstroWiring(dir, audit);
   const files = listSourceFiles(dir).filter((f) => !isKitRoute(dir, f));
   const text = Object.fromEntries(files.map((f) => [f, readFileSync(path.join(dir, f), "utf8")]));
   const result = (what, where) => ({ ok: where.length === 0, what, where });
@@ -109,7 +111,7 @@ export async function smokeSite(url, fetchFn = fetch, { productPath } = {}) {
     product(productPage, [`no product link on the home page (looked for ${productPath ?? "/product/ or /products/"}; pass --product-path=/your-route/)`]);
     return results;
   }
-  const page = await loadPage(`${base}${link[1]}`, fetchFn);
+  const page = await loadPage(`${new URL(base).origin}${link[1]}`, fetchFn);
   product(productPage, page.problem ? [page.problem] : []);
   return results;
 }

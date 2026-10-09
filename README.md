@@ -1,10 +1,10 @@
-# Shopify Headless Next.js Backend SDK & Integration Architecture
+# Shopify Headless Toolkit — Next.js and Astro
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat&logo=next.js)](https://nextjs.org/)
 [![Shopify](https://img.shields.io/badge/Shopify%20Storefront%20API-2026--07-green?style=flat&logo=shopify)](https://shopify.dev/docs/api/storefront)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
 
-A production-grade, modular **Shopify Storefront Backend SDK** engineered for Next.js (App Router & SSR). Designed as a drop-in integration layer to connect any custom frontend to Shopify's modern GraphQL API with zero lock-in and an optional, explicitly enabled Shopify analytics runtime.
+A modular **Shopify Storefront SDK** for Next.js App Router and Astro 7 server-rendered sites. Connect an existing frontend to Shopify's catalogue, cart and hosted checkout while retaining its routes and components. The Next integration also includes an optional, explicitly enabled Shopify analytics runtime.
 
 ---
 
@@ -183,6 +183,10 @@ pnpm shop-setup kit-install ../their-frontend       # never overwrites; stops on
 kit-install follows the received repo's setup: it keeps `@/lib/shopify` imports where the repo has the `@/*` alias, adds starter `policies/[handle]` and `pages/[handle]` routes that read Shopify where the frontend has none, and in an npm repo prints the `npm install` command instead of editing dependencies, so `package-lock.json` stays in step. A frontend that already has Shopify code is not migrated automatically: the audit names that code, and its `lib/shopify` is moved aside before installing.
 
 Then, inside their repo, wire it with [`docs/frontend-wiring.md`](docs/frontend-wiring.md) and prove it with `pnpm shop-setup frontend-check`. The agent's manual is [`.claude/skills/shopify-connect-frontend/SKILL.md`](.claude/skills/shopify-connect-frontend/SKILL.md).
+
+## Astro storefronts
+
+The kit also supports Astro 7 with server output and an SSR adapter. It installs a server-only Shopify provider compatible with NOTIXV's landing-template commerce contract, preserving the site's Astro pages, cookie cart, native filters and Shopify hosted checkout. Astro tools live under `scripts/shopify-kit`, keeping existing template tools intact. Start with [`docs/frontend-wiring-astro.md`](docs/frontend-wiring-astro.md); installation does not automatically replace an existing provider. The existing Next.js kit remains available.
 
 ## 📖 Complete Documentation
 

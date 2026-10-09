@@ -1,0 +1,19 @@
+---
+import { commerce } from "../fixture";
+export const prerender = false;
+const page = await commerce.listProducts({ lang: "en", sort: "title", pageSize: 12 });
+Astro.cache.set({ maxAge: 30, tags: ["commerce"] });
+---
+<html lang="en"><head><title>Adapter fixture</title></head><body>
+  <main>{page.products.map((product) => <a href={`/products/${product.handle}`}><h1>{product.title}</h1><span>{product.price.amount} {product.price.currencyCode}</span></a>)}</main>
+  <button id="add" type="button">Add variant</button><output id="cart-state"></output>
+  <script>
+    import { createCartClient } from "../lib/shopify/astro/browser";
+    const cart = createCartClient();
+    document.querySelector("#add")?.addEventListener("click", async () => {
+      const result = await cart.add("gid://shopify/ProductVariant/2");
+      const output = document.querySelector("#cart-state");
+      if (output) output.textContent = String(result.cart?.totalQuantity ?? 0);
+    });
+  </script>
+</body></html>
