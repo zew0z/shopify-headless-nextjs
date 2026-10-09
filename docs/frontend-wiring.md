@@ -251,6 +251,8 @@ Follow [shopify-analytics.md](shopify-analytics.md) to explicitly enable and con
 - `getReviews({ product, first })` reads the 250 most recently saved Customer review entries (optionally only one product's). `reviewSummary(reviews)` gives `{ count, average }`. Show stars only when `count` is above zero.
 - `getHeroSlides()` reads at most 20 Hero slide entries, in the owner's order. A slide's `href` is the owner's raw link text: render it as a link only when it starts with `/` or `https://`, otherwise show the slide with no link.
 - `getMetaobjects(type)` is the generic read for any other content type.
+- Content is cached for an hour and no webhook refreshes it. A new slide or review shows on the site within the hour. Tell the owner to save each entry with status Active.
+- The Storefront token needs the `unauthenticated_read_metaobjects` permission. Without it `getHeroSlides` and `getReviews` throw. Unverified: whether the Headless channel grants that permission by default. Check the token's permissions in the Headless channel.
 
 ## Contact form
 

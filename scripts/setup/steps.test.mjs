@@ -134,4 +134,7 @@ test("the new setup steps exist and name their commands", () => {
   assert.match(byId.hosting.instructions, /landings\.notixv\.com/);
   assert.match(byId.hosting.instructions, /gh variable set/);
   assert.match(byId.hosting.instructions, /SHOPIFY_STOREFRONT_ACCESS_TOKEN/);
+  assert.match(byId.hosting.instructions, /gh variable set SITE_URL --body https:\/\/<domain>/);
+  assert.match(byId["content-types"].instructions, /within the hour/);
+  assert.match(byId["content-types"].instructions, /status Active/);
 });

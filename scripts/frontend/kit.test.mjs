@@ -157,6 +157,21 @@ test("kit-install adds the NOTIXV deploy files when the repo has none, for its p
   assert.match(plan.deployNote, /output: "standalone"/);
 });
 
+test("the deploy workflow lets a SITE_URL repository variable override the landings address", () => {
+  const target = makeFixture({ "package.json": { name: "shop" }, "pnpm-lock.yaml": "" });
+  const workflow = planKitInstall({ kitRoot: process.cwd(), target, appRoot: "" }).extras.find((e) => e.to === ".github/workflows/deploy-image.yaml");
+  assert.ok(workflow.text.includes("NEXT_PUBLIC_SITE_URL=${{ vars.SITE_URL || steps.tag.outputs.SITE_URL }}"));
+});
+
+test("the image build makes sure public/ exists before it builds", () => {
+  for (const lock of ["pnpm-lock.yaml", "package-lock.json"]) {
+    const target = makeFixture({ "package.json": { name: "shop" }, [lock]: lock === "package-lock.json" ? "{}" : "" });
+    const text = planKitInstall({ kitRoot: process.cwd(), target, appRoot: "" }).extras.find((e) => e.to === "Dockerfile").text;
+    assert.ok(text.includes("RUN mkdir -p public"), lock);
+    assert.ok(text.indexOf("mkdir -p public") < text.indexOf("test:scripts"), lock);
+  }
+});
+
 test("npm repos get npm ci; existing deploy files and a standalone config are left alone", () => {
   const npm = makeFixture({ "package.json": { name: "shop" }, "package-lock.json": "{}" });
   assert.match(planKitInstall({ kitRoot: process.cwd(), target: npm, appRoot: "" }).extras.find((e) => e.to === "Dockerfile").text, /npm ci/);

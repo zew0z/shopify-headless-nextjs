@@ -68,6 +68,8 @@ ARG NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN
 ENV NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=$NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN
 ARG NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN
 ENV NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=$NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN
+# The build needs a public/ folder to exist; a repo without one has none.
+RUN mkdir -p public
 # Publish only an image that passes the kit's tests and lint.
 RUN ${run} test:scripts && ${lint} && ${run} build
 
@@ -143,6 +145,7 @@ jobs:
       # The origin is baked into the build - canonical and OG links, and the
       # framework's trusted-host list - so it cannot be read from the request. It
       # is the repository name under the landings zone, the same name the image has.
+      # Once the real domain points here, a SITE_URL repository variable overrides it.
       - id: tag
         name: Derive image tag
         run: |
@@ -180,7 +183,7 @@ jobs:
           # Secrets and variables > Actions > Variables), set once per shop. They
           # are the public Storefront settings, not secrets.
           build-args: |
-            NEXT_PUBLIC_SITE_URL=\${{ steps.tag.outputs.SITE_URL }}
+            NEXT_PUBLIC_SITE_URL=\${{ vars.SITE_URL || steps.tag.outputs.SITE_URL }}
             GIT_COMMIT=\${{ github.sha }}
             NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN=\${{ vars.SHOPIFY_STORE_DOMAIN }}
             NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN=\${{ vars.SHOPIFY_STOREFRONT_ACCESS_TOKEN }}
