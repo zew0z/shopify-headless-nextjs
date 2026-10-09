@@ -637,3 +637,51 @@ export const pageQuery = /* GraphQL */ `
     }
   }
 `;
+
+/** Content entries of one type (Content > Metaobjects in the admin). Unknown types return no nodes. */
+export const metaobjectsQuery = /* GraphQL */ `
+  query GetMetaobjects($type: String!, $first: Int!) {
+    metaobjects(type: $type, first: $first) {
+      nodes {
+        handle
+        updatedAt
+        fields {
+          key
+          value
+          reference {
+            __typename
+            ... on MediaImage {
+              image {
+                ...ImageFragment
+              }
+            }
+            ... on Product {
+              handle
+              title
+              featuredImage {
+                ...ImageFragment
+              }
+            }
+            ... on Collection {
+              handle
+              title
+            }
+          }
+          references(first: 25) {
+            nodes {
+              __typename
+              ... on Metaobject {
+                handle
+                fields {
+                  key
+                  value
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  ${imageFragment}
+`;

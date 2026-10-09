@@ -61,6 +61,7 @@ export * from "./money";
 export * from "./variants";
 export * from "./content";
 export * from "./menu";
+export * from "./metaobjects";
 
 /**
  * Catalogue reads are shared by every visitor, so they live in the Next.js data

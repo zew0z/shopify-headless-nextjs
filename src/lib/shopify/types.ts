@@ -486,3 +486,9 @@ export interface MenuLink {
   external: boolean;
   items: MenuLink[];
 }
+
+export interface EntryProduct { handle: string; title: string; featuredImage: ShopifyImage | null }
+export interface MetaobjectField { value: string | null; image: ShopifyImage | null; product: EntryProduct | null; collection: { handle: string; title: string } | null; entries: Array<{ handle: string; fields: Record<string, string | null> }> }
+export interface MetaobjectEntry { handle: string; updatedAt: string; fields: Record<string, MetaobjectField> }
+export interface Review { handle: string; author: string; rating: number; body: string; location: string | null; date: string | null; product: EntryProduct | null }
+export interface HeroSlide { handle: string; title: string; subtitle: string | null; image: ShopifyImage; href: string | null; product: EntryProduct | null }
