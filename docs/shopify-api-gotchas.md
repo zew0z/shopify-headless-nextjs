@@ -109,6 +109,22 @@ Shopify returns most failures as HTTP 200 with a populated `userErrors` array.
 `productSet(identifier: {handle: "x"}, input: {...}, synchronous: true)` is the
 idempotent create-or-update.
 
+### Collection mutation arguments and image text use distinct input types
+
+Use `collectionCreate(collection: $collection)` with `CollectionCreateInput` and
+`collectionUpdate(collection: $collection)` with `CollectionUpdateInput`, instead
+of the deprecated `input: CollectionInput` argument. Collection image text is
+`ImageInput.altText`; `alt` belongs to `FileCreateInput` for Shopify Files uploads.
+The catalogue push sends the collection title as its image's `altText` on both
+create and update. The current contract is documented in Shopify's
+[create reference](https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/collectionCreate),
+[update reference](https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/collectionUpdate)
+and [ImageInput reference](https://shopify.dev/docs/api/admin-graphql/2026-07/input-objects/ImageInput).
+
+A normal catalogue push also calls `publishablePublish`; it must not be used for
+an import required to remain draft-only and unpublished. Compatibility changes
+to collection inputs do not change that publication behavior.
+
 ### List metafields are JSON-encoded strings
 `{ type: "list.single_line_text_field", value: "[\"a\",\"b\"]" }`. The validator
 rejects a bare string.

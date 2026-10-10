@@ -71,6 +71,7 @@ test("one upload: download, staged target, form post, file create, wait until re
       return gql({ stagedUploadsCreate: { stagedTargets: [{ url: "https://upload.example/target", resourceUrl: "https://upload.example/resource", parameters: [{ name: "key", value: "k" }] }], userErrors: [] } });
     }
     if (/fileCreate/.test(query)) {
+      assert.deepEqual(variables.files, [{ originalSource: "https://upload.example/resource", contentType: "IMAGE", alt: "sofa.webp" }]);
       steps.push(`create ${variables.files[0].originalSource}`);
       return gql({ fileCreate: { files: [{ id: "gid://file/1", fileStatus: "UPLOADED" }], userErrors: [] } });
     }

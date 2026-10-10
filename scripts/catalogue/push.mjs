@@ -15,8 +15,8 @@ import { pushEntries, validateEntries } from "./metaobjects.mjs";
 import { IMAGE_MAP_FILE, applyImageMap, rehostImages, rehostTargets } from "./rehost.mjs";
 
 const COLLECTION_BY_HANDLE = `query($handle: String!) { collectionByHandle(handle: $handle) { id } }`;
-const COLLECTION_CREATE = `mutation($input: CollectionInput!) { collectionCreate(input: $input) { collection { id } userErrors { field message } } }`;
-const COLLECTION_UPDATE = `mutation($input: CollectionInput!) { collectionUpdate(input: $input) { collection { id } userErrors { field message } } }`;
+const COLLECTION_CREATE = `mutation($collection: CollectionCreateInput!) { collectionCreate(collection: $collection) { collection { id } userErrors { field message } } }`;
+const COLLECTION_UPDATE = `mutation($collection: CollectionUpdateInput!) { collectionUpdate(collection: $collection) { collection { id } userErrors { field message } } }`;
 const PUBLISH = `mutation($id: ID!, $input: [PublicationInput!]!) { publishablePublish(id: $id, input: $input) { userErrors { field message } } }`;
 const LOCATIONS = `query { locations(first: 10) { nodes { id name isActive } } }`;
 
@@ -97,11 +97,11 @@ export async function pushCatalogue({ config, catalog, dryRun = false, limit, on
       handle: collection.handle,
       title: collection.title,
       ...(collection.description && { descriptionHtml: `<p>${collection.description}</p>` }),
-      ...(collection.image && !skipImages && { image: { src: collection.image } }),
+      ...(collection.image && !skipImages && { image: { src: collection.image, altText: collection.title } }),
     };
     const data = existing
-      ? await adminGraphQL(COLLECTION_UPDATE, { input: { ...input, id: existing.id } })
-      : await adminGraphQL(COLLECTION_CREATE, { input });
+      ? await adminGraphQL(COLLECTION_UPDATE, { collection: { ...input, id: existing.id } })
+      : await adminGraphQL(COLLECTION_CREATE, { collection: input });
     const id = existing ? data.collectionUpdate.collection.id : data.collectionCreate.collection.id;
     collectionIds[collection.handle] = id;
     await adminGraphQL(PUBLISH, { id, input: publishTo });

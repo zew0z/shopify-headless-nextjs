@@ -8,6 +8,24 @@ tools take it from there. The shape and every rule are in
 
 Copy feeds into `data/feeds/` (not `~/Downloads`) so the build is reproducible.
 
+## Push behavior
+
+`pnpm shop-setup catalogue --dry-run` validates and prints a plan without network
+calls or writes. A normal `catalogue` push writes collections and products, then
+publishes each to every returned sales channel. It is not a draft-only importer:
+setting a source product's `status` to `DRAFT` does not suppress the publication
+requests. For a draft-only import, use a separately reviewed workflow that keeps
+products in `DRAFT` and collections unpublished, with no publication mutations.
+
+Collection creation uses `collection: CollectionCreateInput`; updates use
+`collection: CollectionUpdateInput`. Collection images use `ImageInput.altText`
+(the collection title), while Shopify Files uploads use `FileCreateInput.alt`.
+These are different input types. Keep the API version explicit and inspect its
+schema before adapting payloads; mocked tests do not prove a live store accepts
+every import field. See the [collection creation reference](https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/collectionCreate),
+[collection update reference](https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/collectionUpdate)
+and [image input reference](https://shopify.dev/docs/api/admin-graphql/2026-07/input-objects/ImageInput).
+
 ## Read the data before you plan anything
 
 Report real numbers back to the owner first: counts, distinct values, which

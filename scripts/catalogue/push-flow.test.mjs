@@ -17,7 +17,7 @@ const kitTypesInStore = kitDefinitions().metaobjects.map((d) => ({
  * calls, in what sequence, with which keys). It cannot prove Shopify's real
  * field names: only a development store can.
  */
-function fakeShopify({ existingCollections = new Set(), failProductSet = false, locations } = {}) {
+function fakeShopify({ existingCollections = new Set(), failProductSet = false, failCollectionWrite = false, locations } = {}) {
   const calls = [];
   const reply = (data) => new Response(JSON.stringify({ data }), { status: 200, headers: { "x-shopify-api-version": "2026-07" } });
   const handler = async (_url, init) => {
@@ -26,8 +26,12 @@ function fakeShopify({ existingCollections = new Set(), failProductSet = false, 
     if (/publications\(first/.test(query)) return reply({ publications: { nodes: [{ id: "gid://pub/1", name: "Online Store" }, { id: "gid://pub/2", name: "Headless" }] } });
     if (/locations\(first/.test(query)) return reply({ locations: { nodes: locations ?? [{ id: "gid://loc/1", name: "Shop", isActive: true }] } });
     if (/collectionByHandle/.test(query)) return reply({ collectionByHandle: existingCollections.has(variables.handle) ? { id: `gid://col/${variables.handle}` } : null });
-    if (/collectionCreate/.test(query)) return reply({ collectionCreate: { collection: { id: `gid://col/${variables.input.handle}` }, userErrors: [] } });
-    if (/collectionUpdate/.test(query)) return reply({ collectionUpdate: { collection: { id: variables.input.id }, userErrors: [] } });
+    if (/collection(Create|Update)/.test(query)) {
+      const operation = /collectionCreate/.test(query) ? "collectionCreate" : "collectionUpdate";
+      const collection = variables.collection;
+      if (failCollectionWrite) return reply({ [operation]: { collection: null, userErrors: [{ field: ["collection", "image"], message: "invalid image" }] } });
+      return reply({ [operation]: { collection: { id: collection.id ?? `gid://col/${collection.handle}` }, userErrors: [] } });
+    }
     if (/productSet/.test(query)) {
       if (failProductSet) return reply({ productSet: { product: null, userErrors: [{ field: ["input"], message: "bad input", code: "INVALID" }] } });
       return reply({ productSet: { product: { id: `gid://prod/${variables.identifier.handle}`, handle: variables.identifier.handle, variants: { nodes: [] } }, userErrors: [] } });
@@ -103,6 +107,50 @@ test("a re-run updates the existing collection instead of creating a second one"
   assert.equal(count(shop.calls, /collectionUpdate/), 1);
   assert.equal(count(shop.calls, /productSet/), 2);
 });
+
+for (const existing of [false, true]) {
+  const operation = existing ? "collectionUpdate" : "collectionCreate";
+  const inputType = existing ? "CollectionUpdateInput" : "CollectionCreateInput";
+
+  test(`${operation} uses the collection argument and ImageInput.altText`, async () => {
+    const shop = fakeShopify({ existingCollections: new Set(existing ? ["sofas"] : []) });
+    mock.method(globalThis, "fetch", shop.handler);
+    const collection = { handle: "sofas", title: "Sofas", description: "Comfortable seating", image: "https://images.example/sofas.jpg" };
+    await pushCatalogue({ config: untracked, catalog: { collections: [collection], products: [] } });
+    const call = shop.calls.find((c) => c.query.includes(operation));
+    assert.ok(call.query.includes(`$collection: ${inputType}!`), call.query);
+    assert.ok(call.query.includes(`${operation}(collection: $collection)`), call.query);
+    assert.deepEqual(call.variables, {
+      collection: {
+        handle: "sofas",
+        title: "Sofas",
+        descriptionHtml: "<p>Comfortable seating</p>",
+        image: { src: "https://images.example/sofas.jpg", altText: "Sofas" },
+        ...(existing && { id: "gid://col/sofas" }),
+      },
+    });
+  });
+
+  test(`${operation} omits images when missing or explicitly skipped`, async () => {
+    for (const skipImages of [false, true]) {
+      const shop = fakeShopify({ existingCollections: new Set(existing ? ["sofas"] : []) });
+      mock.method(globalThis, "fetch", shop.handler);
+      const collection = { handle: "sofas", title: "Sofas", ...(skipImages && { image: "https://images.example/sofas.jpg" }) };
+      await pushCatalogue({ config: untracked, catalog: { collections: [collection], products: [] }, skipImages });
+      const call = shop.calls.find((c) => c.query.includes(operation));
+      assert.equal(call.variables.collection.image, undefined);
+      assert.equal(call.variables.collection.descriptionHtml, undefined);
+    }
+  });
+
+  test(`${operation} user errors stop before publication and product writes`, async () => {
+    const shop = fakeShopify({ existingCollections: new Set(existing ? ["sofas"] : []), failCollectionWrite: true });
+    mock.method(globalThis, "fetch", shop.handler);
+    await assert.rejects(pushCatalogue({ config: untracked, catalog }), /userErrors/);
+    assert.equal(count(shop.calls, /publishablePublish/), 0);
+    assert.equal(count(shop.calls, /productSet/), 0);
+  });
+}
 
 test("only=collections never touches products", async () => {
   const shop = fakeShopify();
