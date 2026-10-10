@@ -59,7 +59,7 @@ export function createCartEndpoint(provider: CommerceProvider, { language = "en"
       return reply({ error: "Invalid cart action" }, 400);
     } catch {
       // Keep the session on network failures, and never expose a token or buyer payload.
-      return reply({ error: "Shopify is unavailable. Your cart has been kept; check it before trying again." }, 502);
+      return reply({ error: "Shopify is unavailable. Check your cart before trying again." }, 502);
     }
   };
 }

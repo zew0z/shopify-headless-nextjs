@@ -63,7 +63,7 @@ test("reads retry but ambiguous cart mutations are never replayed", async () => 
   await api({ query: "query Fixture { shop { name } }", lang: "en" });
   assert.equal(calls, 2);
   calls = 0;
-  await assert.rejects(api({ query: "mutation Fixture { cartCreate { cart { id } } }", lang: "en" }), /cart has been kept/);
+  await assert.rejects(api({ query: "mutation Fixture { cartCreate { cart { id } } }", lang: "en" }), /Check your cart before trying again/);
   assert.equal(calls, 1);
 });
 
@@ -245,6 +245,63 @@ test("cart API network failure preserves the existing session", async () => {
   assert.equal(result.status, 502);
   assert.equal(c.changed.length, 0);
   assert.equal((await result.text()).includes("private response"), false);
+});
+
+test("a lost first-create Storefront response is not replayed or falsely reported as retained", async () => {
+  const created = [];
+  const provider = createShopifyCommerce(clientOptions(async (_url, init) => {
+    const body = JSON.parse(init.body);
+    assert.match(body.query, /mutation CartCreate/);
+    // Shopify applied the write, then its response was lost before the server got an id.
+    created.push({ ...cart, id: "gid://shopify/Cart/first?key=first-only" });
+    throw new TypeError("fetch failed");
+  }, { retries: 2 }));
+  const endpoint = createCartEndpoint(provider);
+  const c = context({ action: "add", merchandiseId: "gid://shopify/ProductVariant/2", quantity: 1 }, { token: null });
+  const result = await endpoint(c);
+  assert.equal(result.status, 502);
+  assert.equal(created.length, 1, "an ambiguous create must not be retried");
+  assert.equal(c.changed.length, 0, "there is no returned token to store");
+  assert.doesNotMatch(await result.text(), /kept|saved|retained|first-only/);
+  const readback = await endpoint(context(undefined, { method: "GET", token: null }));
+  assert.deepEqual(await readback.json(), { cart: null });
+  assert.equal(created.length, 1, "a read without a token cannot discover the created cart");
+});
+
+test("a lost first cookie-bearing API response leaves no recoverable browser session and never replays", async () => {
+  let creates = 0;
+  const provider = createShopifyCommerce(clientOptions(async (_url, init) => {
+    assert.match(JSON.parse(init.body).query, /mutation CartCreate/);
+    creates++;
+    return response({ result: { cart: { ...cart, id: "gid://shopify/Cart/first?key=first-only" }, userErrors: [] } });
+  }));
+  const endpoint = createCartEndpoint(provider);
+  let deliveredToken = null;
+  let lostCookie;
+  const actions = [];
+  const browser = createCartClient("/api/cart", async (_url, init) => {
+    const body = JSON.parse(init.body);
+    actions.push(body.action);
+    const c = context(body, { token: deliveredToken });
+    const result = await endpoint(c);
+    if (body.action === "add") {
+      assert.equal(result.status, 200);
+      lostCookie = c.changed.find((change) => change.length === 3);
+      assert.ok(lostCookie?.[2].httpOnly);
+      assert.doesNotMatch(JSON.stringify(await result.clone().json()), /first-only|\?key=/);
+      // Drop both the JSON and Set-Cookie before delivering either to the browser.
+      throw new TypeError("API response lost before cookie delivery");
+    }
+    for (const change of c.changed) deliveredToken = change.length === 3 ? change[1] : null;
+    return result;
+  });
+  await assert.rejects(browser.add("gid://shopify/ProductVariant/2"), /before cookie delivery/);
+  assert.equal(lostCookie[1], "gid://shopify/Cart/first?key=first-only");
+  assert.equal(deliveredToken, null);
+  assert.deepEqual(await browser.get(), { cart: null });
+  assert.deepEqual(actions, ["add", "get"]);
+  assert.equal(creates, 1);
+  assert.equal(deliveredToken, null);
 });
 
 test("public cart errors contain only known codes and retain the failed mutation session", async () => {

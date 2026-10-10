@@ -48,7 +48,7 @@ export function createStorefront(options: StorefrontOptions) {
       } catch {
         // A mutation may already be applied; a retry could add the item twice.
         if (!mutation && attempt < retries) { await sleep(400 * 2 ** attempt); continue; }
-        throw new ShopifyError("Shopify could not be reached. The cart has been kept; check it before trying again.", 503);
+        throw new ShopifyError("Shopify could not be reached. Check your cart before trying again.", 503);
       }
       if (!mutation && (response.status === 429 || response.status >= 500) && attempt < retries) {
         const seconds = Number(response.headers.get("Retry-After"));
