@@ -138,8 +138,6 @@ export async function shopifyFetch<T>({
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
       // Handle rate limiting (429) or transient gateway errors (503)
       if (!isMutation && (res.status === 429 || res.status === 503)) {
         if (attempt < retries) {
@@ -191,8 +189,6 @@ export async function shopifyFetch<T>({
 
       return { status: res.status, body };
     } catch (err: unknown) {
-      clearTimeout(timeoutId);
-
       // Retry on network abort or transient fetch errors. Never for a mutation: Shopify may
       // have applied it before the connection dropped, and sending it again adds the item twice.
       if (attempt < retries && !isMutation) {
@@ -213,6 +209,9 @@ export async function shopifyFetch<T>({
 
       if (err instanceof ShopifyError) throw err;
       throw new ShopifyError((err as Error).message || "Unknown network error", 500);
+    } finally {
+      // The timeout also covers response.text/json, not just response headers.
+      clearTimeout(timeoutId);
     }
   }
 

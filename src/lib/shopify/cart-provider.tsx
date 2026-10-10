@@ -15,6 +15,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [store] = useState(() => createCartStore({ onAdd: trackAddToCart }));
   useEffect(() => {
     void store.load();
+    const restore = (event: PageTransitionEvent) => { if (event.persisted) void store.restore(); };
+    window.addEventListener("pageshow", restore);
+    return () => window.removeEventListener("pageshow", restore);
   }, [store]);
   return <CartContext.Provider value={store}>{children}</CartContext.Provider>;
 }
@@ -33,5 +36,6 @@ export function useCart() {
     remove: store.remove,
     applyDiscountCodes: store.applyDiscountCodes,
     checkout: store.checkout,
+    refresh: store.load,
   };
 }

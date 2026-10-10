@@ -299,6 +299,8 @@ export interface GetCollectionProductsOptions {
 
 export interface CartLineMerchandise {
   id: string;
+  availableForSale?: boolean;
+  quantityAvailable?: number | null;
   title: string;
   selectedOptions: SelectedOption[];
   price: Money;
@@ -360,6 +362,11 @@ export interface Cart {
   /** Selected by the kit; older custom cart queries must add it for optional analytics deduplication. */
   updatedAt?: string;
   checkoutUrl: string;
+  /** Confirmed allowlisted stock-warning codes; reads clear these notices. */
+  warnings?: string[];
+  /** Returned merchandise allocations only; never subtotal minus total. */
+  discount?: Money | null;
+  discountAllocations?: { targetType: string; discountedAmount: Money }[];
   totalQuantity: number;
   cost: CartCost;
   lines: Connection<CartLine>;

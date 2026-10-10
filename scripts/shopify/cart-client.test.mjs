@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { loadSdk } from "../test-support/load-sdk.mjs";
 
 /** The browser side of /api/cart. The route answers with the cart itself, never { cart }. */
-const { cartAction, isShopifyCartId } = await loadSdk("cart-client");
+const { cartAction, cartCheckoutUrl, isShopifyCartId } = await loadSdk("cart-client");
 
 const CART = { id: "gid://shopify/Cart/c1-abc?key=k", checkoutUrl: "https://checkout.example.gr/cart/c/abc", totalQuantity: 1 };
 
@@ -28,6 +28,21 @@ test("a successful answer is the cart itself", async () => {
 test("null means the shop is not connected to Shopify, and is returned as null", async () => {
   stubFetch(200, null);
   assert.equal(await cartAction({ action: "get", cartId: CART.id }), null);
+});
+
+test("checkout requests a separate handoff and never navigates from an ordinary cart response", async () => {
+  const calls = stubFetch(200, { checkoutUrl: CART.checkoutUrl });
+  assert.equal(await cartCheckoutUrl(CART.id), CART.checkoutUrl);
+  assert.deepEqual(JSON.parse(calls[0].init.body), { action: "checkout", cartId: CART.id });
+  for (const body of [null, { checkoutUrl: null }, { checkoutUrl: "" }, { checkoutUrl: 1 }]) {
+    stubFetch(200, body);
+    assert.equal(await cartCheckoutUrl(CART.id), null);
+  }
+});
+
+test("a failed checkout handoff preserves the sanitized error instead of becoming null", async () => {
+  stubFetch(502, { error: "The cart could not be updated. Read it again.", code: "backend" });
+  await assert.rejects(cartCheckoutUrl(CART.id), (error) => error.code === "backend");
 });
 
 test("an error answer throws Shopify's message", async () => {

@@ -15,6 +15,7 @@ import type {
   ProductConnection,
 } from "./commerce-types";
 import { createStorefront, type StorefrontOptions } from "./client";
+import { merchandiseDiscount, stockLimit, stockWarnings } from "./cart-utils";
 import {
   CART_CREATE,
   CART_DISCOUNT_CODES,
@@ -130,7 +131,7 @@ function cart(node: ShopifyCart): Cart {
   return {
     totalQuantity: node.totalQuantity,
     subtotal: node.cost.subtotalAmount,
-    discount: null,
+    discount: merchandiseDiscount(node.discountAllocations, node.cost.subtotalAmount.currencyCode),
     shipping: null,
     tax: node.cost.totalTaxAmount,
     total: node.cost.totalAmount,
@@ -142,7 +143,7 @@ function cart(node: ShopifyCart): Cart {
       unitPrice: line.cost.amountPerQuantity,
       compareAtUnitPrice: line.cost.compareAtAmountPerQuantity,
       available: line.merchandise.availableForSale,
-      maxQuantity: line.merchandise.quantityAvailable,
+      maxQuantity: stockLimit(line.merchandise.availableForSale, line.merchandise.quantityAvailable),
       options: line.merchandise.selectedOptions.filter(realOption),
       image: image(line.merchandise.image ?? line.merchandise.product.featuredImage),
       productHandle: line.merchandise.product.handle,
@@ -191,15 +192,16 @@ export function createShopifyCommerce(options: StorefrontOptions): CommerceProvi
 const storefront = createStorefront(options);
 // ---------------------------------------------------------------- cart
 
-type MutationPayload = { result: { cart: ShopifyCart | null; userErrors: ShopifyUserError[] } };
+type MutationPayload = { result: { cart: ShopifyCart | null; userErrors: ShopifyUserError[]; warnings?: { code: string }[] } };
 
 function cartResponse(payload: MutationPayload, errorCode: "unavailable" | "coupon" = "unavailable", existingToken: string | null = null): CartResponse {
-  const { cart: node, userErrors } = payload.result;
+  const { cart: node, userErrors, warnings } = payload.result;
+  const adjusted = stockWarnings(warnings).length > 0;
   return {
     cart: node ? cart(node) : null,
-    token: node?.id ?? (userErrors.length ? existingToken : null),
+    token: node?.id ?? (userErrors.length || adjusted ? existingToken : null),
     // Shopify can return the cart together with an error (e.g. quantity capped at stock).
-    ...(userErrors.length && { error: { code: errorCode, message: userErrors[0]!.message } }),
+    ...(userErrors.length ? { error: { code: errorCode, message: userErrors[0]!.message } } : adjusted ? { error: { code: "adjusted" as const } } : {}),
   };
 }
 
@@ -218,6 +220,7 @@ async function resolveVariant(session: CommerceSession, input: AddLineInput) {
     const { product: found } = await storefront<{ product: { variantBySelectedOptions: { id: string } | null } | null }>({
       query: VARIANT_BY_OPTIONS_QUERY,
       lang: session.lang,
+      buyerIp: session.clientAddress,
       variables: { handle: input.handle, selectedOptions: input.options },
     });
     // Posted choices are authoritative, including native forms with a stale hidden id.
@@ -342,14 +345,18 @@ const shopifyProvider: CommerceProvider = {
     return cartResponse(await mutate(session, CART_LINES_REMOVE, { lineIds: [lineId] }), "unavailable", session.token);
   },
 
-  applyDiscount: (session, code) => setDiscountCodes(session, (codes) => [...new Set([...codes, code])]),
-  removeDiscount: (session, code) => setDiscountCodes(session, (codes) => codes.filter((c) => c.toLowerCase() !== code.toLowerCase())),
+  applyDiscount: (session, code) => typeof code === "string" && code.trim() && code.trim().length <= 100
+    ? setDiscountCodes(session, (codes) => [...new Set([...codes, code.trim()])])
+    : Promise.resolve({ cart: null, token: session.token, error: { code: "invalid" as const } }),
+  removeDiscount: (session, code) => typeof code === "string" && code.trim() && code.trim().length <= 100
+    ? setDiscountCodes(session, (codes) => codes.filter((c) => c.toLowerCase() !== code.trim().toLowerCase()))
+    : Promise.resolve({ cart: null, token: session.token, error: { code: "invalid" as const } }),
 
   checkout: {
     kind: "hosted",
     async url(session) {
       const node = await fetchCart(session);
-      return node && node.totalQuantity > 0 ? storefront.checkoutUrl(node.checkoutUrl) : null;
+      return node && node.totalQuantity > 0 && node.checkoutUrl ? storefront.checkoutUrl(node.checkoutUrl) : null;
     },
   },
 };

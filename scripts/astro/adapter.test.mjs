@@ -382,3 +382,87 @@ test("browser mutations are serialized; failure does not replay or block the nex
   assert.equal(max, 1);
   assert.deepEqual(calls.map((c) => c.action), ["add", "get"]);
 });
+
+for (const [name, invoke] of [
+  ["create", (p) => p.addLine({ ...session, token: null }, { merchandiseId: "gid://shopify/ProductVariant/2", options: [], quantity: 8 })],
+  ["add", (p) => p.addLine(session, { merchandiseId: "gid://shopify/ProductVariant/2", options: [], quantity: 8 })],
+  ["update", (p) => p.updateLine(session, "line", 8)],
+  ["remove", (p) => p.removeLine(session, "line")],
+  ["discount", (p) => p.applyDiscount(session, "SAVE")],
+  ["discount-remove", (p) => p.removeDiscount(session, "SAVE")],
+]) test(`Astro ${name} keeps confirmed stock-adjusted cart/token and exposes only a safe code`, async () => {
+  let writes = 0;
+  const provider = createShopifyCommerce(clientOptions(async (_url, init) => {
+    const { query } = JSON.parse(init.body);
+    if (!/^\s*mutation/.test(query)) return response({ cart });
+    writes++;
+    assert.match(query, /warnings\s*{\s*code\s*}/);
+    assert.doesNotMatch(query, /warnings\s*{[^}]*\b(?:message|target)\b/);
+    return response({ result: { cart, userErrors: [], warnings: [{ code: "MERCHANDISE_NOT_ENOUGH_STOCK", message: "PRIVATE-WARNING", target: "PRIVATE-TARGET" }] } });
+  }, { retries: 2 }));
+  const result = await invoke(provider);
+  assert.equal(writes, 1);
+  assert.equal(result.token, cart.id);
+  assert.equal(result.cart.totalQuantity, cart.totalQuantity);
+  assert.deepEqual(result.error, { code: "adjusted" });
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE-/);
+});
+
+test("Astro userErrors precede warnings; unknown warnings do not become public notices", async () => {
+  for (const userErrors of [[], [{ message: "user error", field: [] }]]) {
+    const provider = createShopifyCommerce(clientOptions(async () => response({ result: { cart, userErrors, warnings: [{ code: "MERCHANDISE_OUT_OF_STOCK" }, { code: "PRIVATE-CODE" }] } })));
+    const result = await provider.updateLine(session, "line", 1);
+    assert.equal(result.error.code, userErrors.length ? "unavailable" : "adjusted");
+  }
+  const provider = createShopifyCommerce(clientOptions(async () => response({ result: { cart, userErrors: [], warnings: [{ code: "PRIVATE-CODE" }] } })));
+  assert.equal((await provider.removeLine(session, "line")).error, undefined);
+});
+
+test("Astro cart mapping preserves positive stock caps and explicit merchandise discounts", async () => {
+  const line = (count, available = true) => ({ id: String(count), quantity: 1, cost: { totalAmount: money("25"), amountPerQuantity: money("25"), compareAtAmountPerQuantity: null }, merchandise: { availableForSale: available, quantityAvailable: count, selectedOptions: [], image, product: { handle: "fixture", title: "Fixture", featuredImage: image } } });
+  const node = { ...cart, lines: { nodes: [line(0), line(-2), line(null), line(3), line(0, false)] }, discountAllocations: [
+    { targetType: "LINE_ITEM", discountedAmount: money("0.10") }, { targetType: "LINE_ITEM", discountedAmount: money("0.20") },
+    { targetType: "SHIPPING_LINE", discountedAmount: money("99") }, { targetType: "LINE_ITEM", discountedAmount: { amount: "99", currencyCode: "EUR" } },
+  ] };
+  const provider = createShopifyCommerce(clientOptions(async () => response({ cart: node })));
+  const result = await provider.getCart(session);
+  assert.deepEqual(result.cart.lines.map((l) => l.maxQuantity), [null, null, null, 3, 0]);
+  assert.equal(result.cart.lines[4].available, false);
+  assert.deepEqual(result.cart.discount, money("0.30"));
+});
+
+test("Astro selected-option resolution keeps private buyer IP scoped across concurrent sessions", async () => {
+  const resolutions = [];
+  const provider = createShopifyCommerce(clientOptions(async (_url, init) => {
+    const { query, variables } = JSON.parse(init.body);
+    if (query.includes("query VariantByOptions")) {
+      resolutions.push({ ip: init.headers["Shopify-Storefront-Buyer-IP"], language: variables.language });
+      assert.equal(init.headers["Shopify-Storefront-Private-Token"], "private-fixture");
+      return response({ product: { variantBySelectedOptions: { id: "gid://shopify/ProductVariant/2" } } });
+    }
+    return response(/^\s*mutation/.test(query) ? { result: { cart, userErrors: [] } } : { cart });
+  }, { getConfig: () => ({ ...config, privateToken: "private-fixture" }) }));
+  await Promise.all([session, { ...session, lang: "el", clientAddress: "192.0.2.2" }].map((s) => provider.addLine(s, { handle: "fixture", options: [{ name: "Size", value: "L" }], quantity: 1 })));
+  assert.deepEqual(resolutions, [{ ip: "192.0.2.1", language: "EN" }, { ip: "192.0.2.2", language: "EL" }]);
+});
+
+test("Astro null checkout is unavailable without an outage; transport errors still propagate", async () => {
+  const provider = createShopifyCommerce(clientOptions(async () => response({ cart: { ...cart, checkoutUrl: null } })));
+  assert.equal(await provider.checkout.url(session), null);
+  const broken = createShopifyCommerce(clientOptions(async () => { throw new Error("transport failure"); }));
+  await assert.rejects(broken.checkout.url(session));
+});
+
+test("Astro positive update and discount inputs retain explicit remove intent and sanitized adjusted notices", async () => {
+  const codes = [];
+  const provider = createShopifyCommerce(clientOptions(async () => { assert.fail("blank discount must not reach Shopify"); }));
+  assert.equal((await provider.applyDiscount(session, "  ")).error.code, "invalid");
+  const fake = { updateLine: async () => assert.fail("zero update must not remove"), removeLine: async () => ({ token: session.token, cart: null }), getCart: async () => ({ token: session.token, cart: null, error: { code: "adjusted", message: "PRIVATE-MESSAGE", target: "PRIVATE-TARGET" } }) };
+  const endpoint = createCartEndpoint(fake);
+  const context = (body, method = "POST") => ({ request: new Request("https://fixture.test/api/cart", { method, headers: { origin: "https://fixture.test", "content-type": "application/json" }, ...(method === "POST" && { body: JSON.stringify(body) }) }), url: new URL("https://fixture.test/api/cart"), clientAddress: session.clientAddress, cookies: { get: () => ({ value: session.token }), set: (_name, token) => codes.push(token), delete: () => assert.fail("keep token") } });
+  assert.equal((await endpoint(context({ action: "update", lineId: "line", quantity: 0 }))).status, 400);
+  assert.equal((await endpoint(context({ action: "remove", lineId: "line" }))).status, 200);
+  const result = await endpoint(context(null, "GET"));
+  assert.deepEqual((await result.json()).error, { code: "adjusted" });
+  assert.ok(codes.every((code) => code === session.token));
+});

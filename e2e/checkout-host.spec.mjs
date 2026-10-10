@@ -27,5 +27,9 @@ test("a cart created through the site hands customers to the checkout subdomain"
   });
   expect(res.ok(), `POST /api/cart returned ${res.status()}`).toBeTruthy();
   const cart = await res.json();
-  expect(isOnHost(cart.checkoutUrl, checkoutHost(config)), `checkoutUrl was ${cart.checkoutUrl}`).toBe(true);
+  expect(cart.checkoutUrl).toBe("");
+  const handoff = await request.post(`${siteUrl}/api/cart`, { data: { action: "checkout", cartId: cart.id } });
+  expect(handoff.ok()).toBeTruthy();
+  const { checkoutUrl } = await handoff.json();
+  expect(isOnHost(checkoutUrl, checkoutHost(config)), `checkoutUrl was ${checkoutUrl}`).toBe(true);
 });

@@ -6,6 +6,8 @@
 
 import { shopifyFetch, ShopifyError, requireShopify, dataOrThrow } from "./client";
 import { shopifyConfig, isShopifyConfigured, validateShopifyConfig } from "./config";
+import { merchandiseDiscount, stockWarnings } from "./cart-utils";
+import { validateCheckoutUrl } from "./checkout";
 import {
   Product,
   Collection,
@@ -479,17 +481,21 @@ function checkCartErrors(userErrors?: CartUserError[]) {
   }
 }
 
-/**
- * Normalizes Shopify checkout URLs to ensure clean checkout redirection
- */
-function normalizeCheckoutUrl(rawUrl: string): string {
-  if (!rawUrl) return "";
-  try {
-    const parsed = new URL(rawUrl);
-    return parsed.toString();
-  } catch {
-    return rawUrl;
-  }
+/** User errors take precedence. Warnings describe a confirmed write and keep the cart. */
+function confirmedCart(payload?: { cart: Cart | null; userErrors: CartUserError[]; warnings?: { code: string }[] }): Cart | null {
+  if (!payload) return null;
+  checkCartErrors(payload.userErrors);
+  if (!payload.cart) return null;
+  return { ...payload.cart, warnings: stockWarnings(payload.warnings),
+    discount: merchandiseDiscount(payload.cart.discountAllocations, payload.cart.cost.subtotalAmount.currencyCode) };
+}
+
+/** Reads Shopify's current checkout at handoff; ordinary browser cart payloads omit it. */
+export async function getCheckoutUrl(cartId: string): Promise<string | null> {
+  const cart = await getCart(cartId);
+  return cart && cart.totalQuantity > 0 && cart.checkoutUrl
+    ? validateCheckoutUrl(cart.checkoutUrl, shopifyConfig.domain, process.env.SHOPIFY_CHECKOUT_HOSTS)
+    : null;
 }
 
 /**
@@ -505,6 +511,7 @@ export async function createCart(
     cartCreate: {
       cart: Cart;
       userErrors: CartUserError[];
+      warnings?: { code: string }[];
     };
   }>({
     query: createCartMutation,
@@ -512,12 +519,7 @@ export async function createCart(
     cache: "no-store",
   });
 
-  checkCartErrors(res.body.data?.cartCreate.userErrors);
-  const cart = res.body.data?.cartCreate.cart || null;
-  if (cart) {
-    cart.checkoutUrl = normalizeCheckoutUrl(cart.checkoutUrl);
-  }
-  return cart;
+  return confirmedCart(res.body.data?.cartCreate);
 }
 
 /**
@@ -534,7 +536,8 @@ export async function getCart(cartId: string): Promise<Cart | null> {
     cache: "no-store",
   });
 
-  return res.body.data?.cart || null;
+  const cart = res.body.data?.cart;
+  return cart ? { ...cart, warnings: [], discount: merchandiseDiscount(cart.discountAllocations, cart.cost.subtotalAmount.currencyCode) } : null;
 }
 
 /**
@@ -550,6 +553,7 @@ export async function addToCart(
     cartLinesAdd: {
       cart: Cart;
       userErrors: CartUserError[];
+      warnings?: { code: string }[];
     };
   }>({
     query: addToCartMutation,
@@ -557,8 +561,7 @@ export async function addToCart(
     cache: "no-store",
   });
 
-  checkCartErrors(res.body.data?.cartLinesAdd.userErrors);
-  return res.body.data?.cartLinesAdd.cart || null;
+  return confirmedCart(res.body.data?.cartLinesAdd);
 }
 
 /**
@@ -574,6 +577,7 @@ export async function updateCartLines(
     cartLinesUpdate: {
       cart: Cart;
       userErrors: CartUserError[];
+      warnings?: { code: string }[];
     };
   }>({
     query: updateCartLinesMutation,
@@ -581,8 +585,7 @@ export async function updateCartLines(
     cache: "no-store",
   });
 
-  checkCartErrors(res.body.data?.cartLinesUpdate.userErrors);
-  return res.body.data?.cartLinesUpdate.cart || null;
+  return confirmedCart(res.body.data?.cartLinesUpdate);
 }
 
 /**
@@ -598,6 +601,7 @@ export async function removeFromCart(
     cartLinesRemove: {
       cart: Cart;
       userErrors: CartUserError[];
+      warnings?: { code: string }[];
     };
   }>({
     query: removeFromCartMutation,
@@ -605,8 +609,7 @@ export async function removeFromCart(
     cache: "no-store",
   });
 
-  checkCartErrors(res.body.data?.cartLinesRemove.userErrors);
-  return res.body.data?.cartLinesRemove.cart || null;
+  return confirmedCart(res.body.data?.cartLinesRemove);
 }
 
 /**
@@ -616,12 +619,17 @@ export async function applyDiscountCode(
   cartId: string,
   discountCodes: string[]
 ): Promise<Cart | null> {
+  if (!Array.isArray(discountCodes) || discountCodes.length > 250 || discountCodes.some((code) => typeof code !== "string" || !code.trim() || code.trim().length > 255)) {
+    throw new Error("A nonblank discount code is required; use an empty list to clear codes.");
+  }
+  discountCodes = discountCodes.map((code) => code.trim());
   if (!isShopifyConfigured || !cartId) return null;
 
   const res = await shopifyFetch<{
     cartDiscountCodesUpdate: {
       cart: Cart;
       userErrors: CartUserError[];
+      warnings?: { code: string }[];
     };
   }>({
     query: updateCartDiscountCodesMutation,
@@ -629,8 +637,7 @@ export async function applyDiscountCode(
     cache: "no-store",
   });
 
-  checkCartErrors(res.body.data?.cartDiscountCodesUpdate.userErrors);
-  return res.body.data?.cartDiscountCodesUpdate.cart || null;
+  return confirmedCart(res.body.data?.cartDiscountCodesUpdate);
 }
 
 /**
@@ -646,6 +653,7 @@ export async function addGiftCard(
     cartGiftCardCodesAdd: {
       cart: Cart;
       userErrors: CartUserError[];
+      warnings?: { code: string }[];
     };
   }>({
     query: addCartGiftCardCodesMutation,
@@ -653,8 +661,7 @@ export async function addGiftCard(
     cache: "no-store",
   });
 
-  checkCartErrors(res.body.data?.cartGiftCardCodesAdd.userErrors);
-  return res.body.data?.cartGiftCardCodesAdd.cart || null;
+  return confirmedCart(res.body.data?.cartGiftCardCodesAdd);
 }
 
 /**
@@ -671,6 +678,7 @@ export async function removeGiftCard(
     cartGiftCardCodesRemove: {
       cart: Cart;
       userErrors: CartUserError[];
+      warnings?: { code: string }[];
     };
   }>({
     query: removeCartGiftCardCodesMutation,
@@ -678,8 +686,7 @@ export async function removeGiftCard(
     cache: "no-store",
   });
 
-  checkCartErrors(res.body.data?.cartGiftCardCodesRemove.userErrors);
-  return res.body.data?.cartGiftCardCodesRemove.cart || null;
+  return confirmedCart(res.body.data?.cartGiftCardCodesRemove);
 }
 
 /**
@@ -695,6 +702,7 @@ export async function updateCartBuyerIdentity(
     cartBuyerIdentityUpdate: {
       cart: Cart;
       userErrors: CartUserError[];
+      warnings?: { code: string }[];
     };
   }>({
     query: updateCartBuyerIdentityMutation,
@@ -702,6 +710,5 @@ export async function updateCartBuyerIdentity(
     cache: "no-store",
   });
 
-  checkCartErrors(res.body.data?.cartBuyerIdentityUpdate.userErrors);
-  return res.body.data?.cartBuyerIdentityUpdate.cart || null;
+  return confirmedCart(res.body.data?.cartBuyerIdentityUpdate);
 }

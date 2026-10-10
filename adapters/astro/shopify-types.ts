@@ -98,11 +98,12 @@ export interface ShopifyCartLine {
 
 export interface ShopifyCart {
   id: string;
-  checkoutUrl: string;
+  checkoutUrl: string | null;
   totalQuantity: number;
   cost: { subtotalAmount: ShopifyMoney; totalAmount: ShopifyMoney; totalTaxAmount: ShopifyMoney | null };
   lines: { nodes: ShopifyCartLine[] };
   discountCodes: { code: string; applicable: boolean }[];
+  discountAllocations?: { targetType: string; discountedAmount: ShopifyMoney }[];
 }
 
 export interface ShopifyUserError {

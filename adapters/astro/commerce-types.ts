@@ -155,7 +155,7 @@ export interface CommerceSession {
   token: string | null;
 }
 
-export type CommerceErrorCode = "invalid" | "rateLimited" | "unavailable" | "notFound" | "backend" | "coupon";
+export type CommerceErrorCode = "invalid" | "rateLimited" | "unavailable" | "notFound" | "backend" | "coupon" | "adjusted";
 
 /** Every cart call returns the (possibly new) session token so the cookie can follow it. */
 export interface CartResponse {

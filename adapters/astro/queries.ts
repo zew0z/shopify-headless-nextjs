@@ -193,6 +193,7 @@ const CART = /* GraphQL */ `
       totalTaxAmount { ...Money }
     }
     discountCodes { code applicable }
+    discountAllocations { targetType discountedAmount { ...Money } }
     lines(first: 100) {
       nodes {
         id
@@ -220,7 +221,7 @@ const CART = /* GraphQL */ `
   ${MONEY}
 `;
 
-const CART_PAYLOAD = "cart { ...Cart } userErrors { field message code }";
+const CART_PAYLOAD = "cart { ...Cart } userErrors { field message code } warnings { code }";
 
 export const CART_QUERY = /* GraphQL */ `
   query Cart(${CTX}, $cartId: ID!) ${IN_CONTEXT} {

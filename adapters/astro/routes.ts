@@ -13,7 +13,7 @@ export interface CartContext {
 
 /** Optional standalone API. Template integrations keep their existing commerce form routes and cookie handler. */
 export function createCartEndpoint(provider: CommerceProvider, { language = "en", cookie = "shopify_cart" } = {}) {
-  const publicCodes = new Set(["invalid", "rateLimited", "unavailable", "notFound", "backend", "coupon"]);
+  const publicCodes = new Set(["invalid", "rateLimited", "unavailable", "notFound", "backend", "coupon", "adjusted"]);
   const reply = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store", Vary: "Cookie" } });
   return async (context: CartContext): Promise<Response> => {
     const { request, url, cookies } = context;
@@ -44,7 +44,7 @@ export function createCartEndpoint(provider: CommerceProvider, { language = "en"
           if (!validQuantity || quantity < 1 || typeof data.merchandiseId !== "string" || !/^gid:\/\/shopify\/ProductVariant\/\d+$/.test(data.merchandiseId)) return reply({ error: "A variant id and positive quantity are required" }, 400);
           return remember(await provider.addLine(session, { merchandiseId: data.merchandiseId, options: [], quantity }));
         }
-        case "update": if (id && validQuantity) return remember(await provider.updateLine(session, id, quantity)); break;
+        case "update": if (id && validQuantity && quantity > 0) return remember(await provider.updateLine(session, id, quantity)); break;
         case "remove": if (id) return remember(await provider.removeLine(session, id)); break;
         case "discount": case "discount-remove": {
           const code = typeof data.code === "string" ? data.code.trim() : "";

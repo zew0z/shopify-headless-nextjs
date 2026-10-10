@@ -12,7 +12,7 @@ const { NextResponse } = require("next/server");
 const appDir = path.dirname(path.dirname(findSdkDir(process.cwd())));
 const compiled = ts.transpileModule(readFileSync(path.join(appDir, "app/api/cart/route.ts"), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 function endpoint(call) {
-  const sdk = Object.fromEntries(["createCart", "getCart", "addToCart", "updateCartLines", "removeFromCart", "applyDiscountCode", "addGiftCard", "removeGiftCard", "updateCartBuyerIdentity"].map((name) => [name, (...args) => call(name, args)]));
+  const sdk = Object.fromEntries(["createCart", "getCart", "addToCart", "updateCartLines", "removeFromCart", "applyDiscountCode", "addGiftCard", "removeGiftCard", "updateCartBuyerIdentity", "getCheckoutUrl"].map((name) => [name, (...args) => call(name, args)]));
   const mod = { exports: {} };
   new Function("module", "exports", "require", compiled)(mod, mod.exports, (id) => {
     if (id === "next/server") return { NextResponse };
@@ -44,15 +44,18 @@ test("Next cart route rejects missing, fractional and invalid quantities before 
   assert.deepEqual(calls, []);
 });
 
-test("Next cart route preserves explicit zero removal, whole quantities and uncached responses", async () => {
+test("Next cart route preserves explicit remove intent, whole quantities and uncached responses", async () => {
   const calls = [];
   const post = endpoint(async (name, args) => { calls.push({ name, args }); return { id: "gid://shopify/Cart/1" }; });
-  for (const [action, quantity] of [["create", 1], ["add", 2], ["update", 0]]) {
+  for (const [action, quantity] of [["create", 1], ["add", 2], ["update", 1]]) {
     const result = await post(request({ action, cartId: "gid://shopify/Cart/1", lines: [{ id: "line", merchandiseId: "gid://shopify/ProductVariant/2", quantity }] }));
     assert.equal(result.status, 200);
     assert.equal(result.headers.get("cache-control"), "private, no-store");
   }
-  assert.equal(calls[2].args[1][0].quantity, 0);
+  assert.equal(calls[2].args[1][0].quantity, 1);
+  assert.equal((await post(request({ action: "update", cartId: "gid://shopify/Cart/1", lines: [{ id: "line", quantity: 0 }] }))).status, 400);
+  await post(request({ action: "remove", cartId: "gid://shopify/Cart/1", lineIds: ["line"] }));
+  assert.equal(calls[3].name, "removeFromCart");
   assert.equal((await post(request({ action: "create" }))).status, 200);
 });
 
@@ -78,4 +81,27 @@ test("Next cart route exposes an expired cart as a public code, retaining compat
     assert.equal(result.status, 404);
     assert.equal((await result.json()).code, "notFound");
   } finally { console.error = original; }
+});
+
+
+test("ordinary cart responses omit keyed checkout URLs; explicit checkout handoff retains them", async () => {
+  const url = "https://fixture.myshopify.com/checkouts/1?key=PRIVATE-CHECKOUT-SENTINEL";
+  const post = endpoint(async (name) => name === "getCheckoutUrl" ? url : { id: "gid://shopify/Cart/1?key=cart-fixture", checkoutUrl: url });
+  for (const action of ["get", "create", "add", "update", "remove", "discount", "addGiftCard", "removeGiftCard", "buyerIdentity"]) {
+    const result = await post(request({ action, cartId: "gid://shopify/Cart/1", lines: [{ id: "line", quantity: 1 }], discountCodes: [], appliedGiftCardIds: [] }));
+    assert.equal(result.status, 200);
+    assert.equal((await result.json()).checkoutUrl, "");
+  }
+  assert.deepEqual(await (await post(request({ action: "checkout", cartId: "gid://shopify/Cart/1" }))).json(), { checkoutUrl: url });
+});
+
+test("blank discount inputs do not clear existing codes; explicit empty list does", async () => {
+  const calls = [];
+  const post = endpoint(async (name, args) => { calls.push({ name, args }); return null; });
+  for (const discountCodes of [undefined, "", [""], ["  "], [null]]) {
+    assert.equal((await post(request({ action: "discount", cartId: "id", discountCodes }))).status, 400);
+  }
+  assert.equal(calls.length, 0);
+  assert.equal((await post(request({ action: "discount", cartId: "id", discountCodes: [] }))).status, 200);
+  assert.deepEqual(calls[0].args[1], []);
 });

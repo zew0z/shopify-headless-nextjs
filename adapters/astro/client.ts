@@ -72,7 +72,7 @@ export function createStorefront(options: StorefrontOptions) {
     const url = new URL(value);
     const c = config();
     const allowed = url.hostname === c.domain || url.hostname === "checkout.shopify.com" || (c.domain === "mock.shop" && url.hostname.endsWith(".mock.shop"));
-    if (url.protocol !== "https:" || url.username || url.password || !allowed) throw new ShopifyError("Shopify returned an invalid hosted checkout address.");
+    if (url.protocol !== "https:" || url.username || url.password || url.port || !allowed) throw new ShopifyError("Shopify returned an invalid hosted checkout address.");
     return url.href;
   };
   return storefront;

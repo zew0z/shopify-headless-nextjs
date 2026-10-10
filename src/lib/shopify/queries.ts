@@ -294,6 +294,8 @@ export const cartFragment = /* GraphQL */ `
               id
               title
               sku
+              availableForSale
+              quantityAvailable
               selectedOptions {
                 name
                 value
@@ -324,6 +326,7 @@ export const cartFragment = /* GraphQL */ `
         }
       }
     }
+    discountAllocations { targetType discountedAmount { amount currencyCode } }
     discountCodes {
       code
       applicable

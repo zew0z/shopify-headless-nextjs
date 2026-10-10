@@ -7,10 +7,10 @@
 
 function sanitizeDomain(domain?: string): string {
   if (!domain) return "";
-  let clean = domain
-    .replace(/^https?:\/\//, "") // Remove protocol if present
+  let clean = domain.trim()
+    .replace(/^https?:\/\//i, "") // Remove protocol if present
     .replace(/\/+$/, "")        // Remove trailing slashes
-    .trim();
+    .toLowerCase();
 
   // If user provided just store handle (e.g. 'my-cool-store'), auto-append .myshopify.com
   if (clean && !clean.includes(".")) {

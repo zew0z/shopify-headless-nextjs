@@ -2,10 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { loadSdk } from "../test-support/load-sdk.mjs";
 
-const { createCartStore, cartLines } = await loadSdk("cart-store");
+const { createCartStore: createStore, cartLines } = await loadSdk("cart-store");
+const createCartStore = (options) => createStore({ checkoutUrl: async (id) => `https://shop/checkout/${id}`, ...options });
 const { CartRequestError } = await loadSdk("cart-client");
 
-const cart = (id, lines = []) => ({ id, checkoutUrl: `https://shop/checkout/${id}`, totalQuantity: lines.length, lines: { edges: lines.map((node) => ({ node })) }, cost: {} });
+const cart = (id, lines = []) => ({ id, checkoutUrl: `https://shop/checkout/${id}`, totalQuantity: Math.max(1, lines.length), lines: { edges: lines.map((node) => ({ node })) }, cost: {} });
 const memory = (id = null) => ({ id, get() { return this.id; }, set(v) { this.id = v; }, clear() { this.id = null; } });
 
 test("two quick adds create one cart, then add to it", async () => {
@@ -72,7 +73,7 @@ test("checkout goes to Shopify's checkoutUrl", async () => {
   let went;
   const store = createCartStore({ action: async () => cart("gid://shopify/Cart/1"), storage: memory("gid://shopify/Cart/1"), goTo: (u) => (went = u) });
   await store.load();
-  store.checkout();
+  await store.checkout();
   assert.equal(went, "https://shop/checkout/gid://shopify/Cart/1");
 });
 
@@ -83,13 +84,13 @@ test("checkout stays blocked during queued writes, including before the first mi
   const store = createCartStore({ action: async (body) => { if (body.action === "update") await held; return cart("gid://shopify/Cart/1"); }, storage: memory("gid://shopify/Cart/1"), goTo: (url) => went.push(url) });
   await store.load();
   const update = store.update("line", 2);
-  store.checkout();
+  await store.checkout();
   await Promise.resolve();
-  store.checkout();
+  await store.checkout();
   assert.deepEqual(went, []);
   release();
   await update;
-  store.checkout();
+  await store.checkout();
   assert.equal(went.length, 1);
 });
 
@@ -104,11 +105,11 @@ test("a read outage retains an inert cart until a fresh read succeeds", async ()
   await store.load();
   assert.equal(store.getState().cart, before);
   assert.equal(storage.id, before.id);
-  store.checkout();
+  await store.checkout();
   assert.deepEqual(went, []);
   fail = false;
   await store.load();
-  store.checkout();
+  await store.checkout();
   assert.equal(went.length, 1);
 });
 
@@ -238,5 +239,74 @@ test("a subscriber that throws once does not freeze later changes", async () => 
   await store.add([{ merchandiseId: "v1", quantity: 1 }]).catch(() => {});
   await store.add([{ merchandiseId: "v1", quantity: 1 }]);
   assert.equal(store.getState().cart.id, "gid://shopify/Cart/1");
+  assert.equal(store.getState().busy, false);
+});
+
+
+test("checkout keeps its navigation lock and refuses further writes until a persisted restore", async () => {
+  const calls = [];
+  const storage = memory("gid://shopify/Cart/1");
+  let reads = 0;
+  const store = createCartStore({ action: async (body) => { calls.push(body.action); return reads++ ? cart("gid://shopify/Cart/1", [{ id: "restored" }]) : cart("gid://shopify/Cart/1"); }, storage, goTo: () => {} });
+  await store.load();
+  await store.checkout();
+  assert.equal(store.getState().busy, true);
+  await store.add([{ merchandiseId: "v", quantity: 1 }]);
+  await store.update("line", 2);
+  await store.remove("line");
+  await store.applyDiscountCodes(["SAVE"]);
+  await store.checkout();
+  assert.deepEqual(calls, ["get"]);
+  await store.restore();
+  assert.deepEqual(calls, ["get", "get"]);
+  assert.equal(store.getState().busy, false);
+  assert.equal(store.getState().cart.lines.edges[0].node.id, "restored");
+});
+
+test("checkout failure or a null handoff releases the lock without navigating", async () => {
+  for (const checkoutUrl of [async () => null, async () => { throw new Error("handoff unavailable"); }]) {
+    const store = createCartStore({ action: async () => cart("gid://shopify/Cart/1"), checkoutUrl, storage: memory("gid://shopify/Cart/1"), goTo: () => assert.fail("must not navigate") });
+    await store.load();
+    await store.checkout();
+    assert.equal(store.getState().busy, false);
+    assert.ok(store.getState().error);
+    assert.equal(store.getState().cart.id, "gid://shopify/Cart/1");
+  }
+});
+
+test("confirmed warning cart replaces state, preserves storage, and requires review before checkout", async () => {
+  const storage = memory();
+  const adjusted = { ...cart("gid://shopify/Cart/adjusted"), warnings: ["MERCHANDISE_NOT_ENOUGH_STOCK"] };
+  const store = createCartStore({ action: async (body) => body.action === "get" ? cart(adjusted.id) : adjusted, storage, goTo: () => assert.fail("review required") });
+  await store.add([{ merchandiseId: "v", quantity: 5 }]);
+  assert.equal(store.getState().cart, adjusted);
+  assert.equal(storage.id, adjusted.id);
+  assert.match(store.getState().error, /Review your cart/);
+  await store.checkout();
+  await store.load();
+  assert.equal(store.getState().error, null);
+});
+
+test("quantity edits and whitespace discount attempts do not become remove/clear mutations", async () => {
+  const calls = [];
+  const store = createCartStore({ action: async (body) => { calls.push(body); return cart("gid://shopify/Cart/1"); }, storage: memory("gid://shopify/Cart/1") });
+  for (const quantity of ["", "  ", 0, -1, NaN, 1.5, 1001]) await store.update("line", quantity);
+  await store.applyDiscountCodes(["  "]);
+  assert.deepEqual(calls, []);
+  await store.remove("line");
+  await store.applyDiscountCodes([]);
+  assert.deepEqual(calls.map((c) => c.action), ["remove", "discount"]);
+  assert.deepEqual(calls[1].discountCodes, []);
+});
+
+test("a persisted restore cancels an older in-flight checkout handoff", async () => {
+  let resolveUrl;
+  const handoff = new Promise((resolve) => { resolveUrl = resolve; });
+  const store = createCartStore({ action: async () => cart("gid://shopify/Cart/1"), checkoutUrl: async () => handoff, storage: memory("gid://shopify/Cart/1"), goTo: () => assert.fail("stale navigation") });
+  await store.load();
+  const leaving = store.checkout();
+  await store.restore();
+  resolveUrl("https://shop/checkout/old");
+  await leaving;
   assert.equal(store.getState().busy, false);
 });

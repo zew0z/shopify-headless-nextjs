@@ -28,3 +28,26 @@ test("Next transport still retries an unavailable read", async () => {
     assert.equal(calls, 2);
   } finally { globalThis.fetch = original; }
 });
+
+test("Next timeout covers a hanging response body, with bounded read retries and no mutation replay", async () => {
+  const { shopifyConfig } = await loadSdk("config");
+  const originalFetch = globalThis.fetch;
+  const timeout = shopifyConfig.timeoutMs;
+  const delay = shopifyConfig.retryDelayMs;
+  shopifyConfig.timeoutMs = 10;
+  shopifyConfig.retryDelayMs = 0;
+  try {
+    for (const mutation of [false, true]) {
+      let calls = 0;
+      globalThis.fetch = async (_url, { signal }) => {
+        calls++;
+        return { ok: true, status: 200, headers: new Headers(), json: () => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(Object.assign(new Error("body aborted"), { name: "AbortError" })), { once: true })) };
+      };
+      let guard;
+      try {
+        await assert.rejects(Promise.race([shopifyFetch({ query: mutation ? "mutation Write { cartCreate { cart { id } } }" : "query Read { shop { id } }", cache: "no-store", retries: 1 }), new Promise((_resolve, reject) => { guard = setTimeout(() => reject(new Error("body timeout did not fire")), 1000); })]), (error) => !error.message.includes("did not fire"));
+      } finally { clearTimeout(guard); }
+      assert.equal(calls, mutation ? 1 : 2);
+    }
+  } finally { globalThis.fetch = originalFetch; shopifyConfig.timeoutMs = timeout; shopifyConfig.retryDelayMs = delay; }
+});

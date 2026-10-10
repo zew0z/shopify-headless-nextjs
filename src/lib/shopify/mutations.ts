@@ -10,6 +10,7 @@ export const createCartMutation = /* GraphQL */ `
       cart {
         ...CartFragment
       }
+      warnings { code }
       userErrors {
         field
         message
@@ -26,6 +27,7 @@ export const addToCartMutation = /* GraphQL */ `
       cart {
         ...CartFragment
       }
+      warnings { code }
       userErrors {
         field
         message
@@ -42,6 +44,7 @@ export const updateCartLinesMutation = /* GraphQL */ `
       cart {
         ...CartFragment
       }
+      warnings { code }
       userErrors {
         field
         message
@@ -58,6 +61,7 @@ export const removeFromCartMutation = /* GraphQL */ `
       cart {
         ...CartFragment
       }
+      warnings { code }
       userErrors {
         field
         message
@@ -74,6 +78,7 @@ export const updateCartDiscountCodesMutation = /* GraphQL */ `
       cart {
         ...CartFragment
       }
+      warnings { code }
       userErrors {
         field
         message
@@ -90,6 +95,7 @@ export const addCartGiftCardCodesMutation = /* GraphQL */ `
       cart {
         ...CartFragment
       }
+      warnings { code }
       userErrors {
         field
         message
@@ -106,6 +112,7 @@ export const removeCartGiftCardCodesMutation = /* GraphQL */ `
       cart {
         ...CartFragment
       }
+      warnings { code }
       userErrors {
         field
         message
@@ -122,6 +129,7 @@ export const updateCartBuyerIdentityMutation = /* GraphQL */ `
       cart {
         ...CartFragment
       }
+      warnings { code }
       userErrors {
         field
         message

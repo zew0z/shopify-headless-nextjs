@@ -15,20 +15,15 @@ export function CartDrawer() {
     totalQuantity,
     updateItemQuantity,
     removeItem,
-    checkoutUrl,
+    checkout,
+    refreshCart,
   } = useCart();
 
   if (!isOpen) return null;
 
   const lines = cart?.lines.edges || [];
 
-  const handleCheckout = () => {
-    if (checkoutUrl && checkoutUrl.startsWith("http")) {
-      window.location.href = checkoutUrl;
-    } else {
-      alert("Checkout session is generating, please wait a moment or try again.");
-    }
-  };
+  const handleCheckout = () => { void checkout(); };
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
@@ -59,9 +54,10 @@ export function CartDrawer() {
           </div>
 
           {error && (
-            <p role="alert" className="mx-6 mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+            <div role="alert" className="mx-6 mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
               {error}
-            </p>
+              <button type="button" disabled={isLoading} onClick={() => { void refreshCart(); }} className="ml-2 underline disabled:opacity-50">Refresh cart</button>
+            </div>
           )}
 
           {/* Cart Items List */}
@@ -124,7 +120,7 @@ export function CartDrawer() {
                           <div className="flex items-center rounded-lg border border-neutral-200 dark:border-neutral-700">
                             <button
                               onClick={() => updateItemQuantity(line.id, line.quantity - 1)}
-                              disabled={isLoading}
+                              disabled={isLoading || line.quantity <= 1}
                               aria-label="Decrease quantity"
                               className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-l-lg transition-colors disabled:opacity-50"
                             >
@@ -135,7 +131,7 @@ export function CartDrawer() {
                             </span>
                             <button
                               onClick={() => updateItemQuantity(line.id, line.quantity + 1)}
-                              disabled={isLoading}
+                              disabled={isLoading || item.availableForSale === false || line.quantity >= 1000 || (typeof item.quantityAvailable === "number" && item.quantityAvailable > 0 && line.quantity >= item.quantityAvailable)}
                               aria-label="Increase quantity"
                               className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-r-lg transition-colors disabled:opacity-50"
                             >
@@ -167,13 +163,18 @@ export function CartDrawer() {
                 <span>Subtotal</span>
                 <span>{cart && formatMoney(cart.cost.subtotalAmount)}</span>
               </div>
+              {cart?.discount && (
+                <div className="flex items-center justify-between text-sm">
+                  <span>Discounts</span><span>−{formatMoney(cart.discount)}</span>
+                </div>
+              )}
               <p className="text-xs text-neutral-500">
                 Taxes and shipping calculated securely on Shopify checkout.
               </p>
 
               <button
                 onClick={handleCheckout}
-                disabled={isLoading}
+                disabled={isLoading || Boolean(error)}
                 className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 py-3.5 px-4 text-sm font-semibold text-white shadow-md transition-all hover:scale-[1.01] disabled:opacity-60"
               >
                 {isLoading ? (

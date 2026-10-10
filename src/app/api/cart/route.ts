@@ -9,7 +9,12 @@ import {
   addGiftCard,
   removeGiftCard,
   updateCartBuyerIdentity,
+  getCheckoutUrl,
 } from "@/lib/shopify";
+import type { Cart } from "@/lib/shopify";
+
+// Browser cart ids remain part of this SDK's storage contract; unused keyed checkout URLs do not.
+const publicCart = (cart: Cart | null) => cart ? { ...cart, checkoutUrl: "" } : null;
 
 const reply = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
 function validQuantities(lines: unknown, minimum: number, optional = false): boolean {
@@ -26,38 +31,42 @@ export async function POST(req: NextRequest) {
     const { action } = body;
     if ((action === "create" && !validQuantities(body.lines, 1, true)) ||
         (action === "add" && !validQuantities(body.lines, 1)) ||
-        (action === "update" && !validQuantities(body.lines, 0))) {
+        (action === "update" && !validQuantities(body.lines, 1))) {
       return reply({ error: "Cart quantities must be whole numbers within the supported range", code: "invalid" }, 400);
+    }
+    if (action === "discount" && (!Array.isArray(body.discountCodes) || body.discountCodes.length > 250 || body.discountCodes.some((code: unknown) => typeof code !== "string" || !code.trim() || code.trim().length > 255))) {
+      return reply({ error: "A nonblank discount code is required; use an empty list to clear codes.", code: "invalid" }, 400);
     }
 
     switch (action) {
+      case "checkout": return reply({ checkoutUrl: await getCheckoutUrl(body.cartId) });
       case "create": {
         const cart = await createCart(body.lines, body.buyerIdentity);
-        return reply(cart);
+        return reply(publicCart(cart));
       }
       case "get": {
         const cart = await getCart(body.cartId);
-        return reply(cart);
+        return reply(publicCart(cart));
       }
       case "add": {
         const cart = await addToCart(body.cartId, body.lines);
-        return reply(cart);
+        return reply(publicCart(cart));
       }
       case "update": {
         const cart = await updateCartLines(body.cartId, body.lines);
-        return reply(cart);
+        return reply(publicCart(cart));
       }
       case "remove": {
         const cart = await removeFromCart(body.cartId, body.lineIds);
-        return reply(cart);
+        return reply(publicCart(cart));
       }
       case "discount": {
         const cart = await applyDiscountCode(body.cartId, body.discountCodes);
-        return reply(cart);
+        return reply(publicCart(cart));
       }
       case "addGiftCard": {
         const cart = await addGiftCard(body.cartId, body.giftCardCodes);
-        return reply(cart);
+        return reply(publicCart(cart));
       }
       case "removeGiftCard": {
         if (!Array.isArray(body.appliedGiftCardIds)) {
@@ -67,11 +76,11 @@ export async function POST(req: NextRequest) {
           );
         }
         const cart = await removeGiftCard(body.cartId, body.appliedGiftCardIds);
-        return reply(cart);
+        return reply(publicCart(cart));
       }
       case "buyerIdentity": {
         const cart = await updateCartBuyerIdentity(body.cartId, body.buyerIdentity);
-        return reply(cart);
+        return reply(publicCart(cart));
       }
       default:
         return reply({ error: "Invalid action", code: "invalid" }, 400);

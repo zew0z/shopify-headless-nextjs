@@ -230,9 +230,9 @@ Keep their cart UI and the way it opens. Replace what it stores and what its but
 
 ### The cart API
 
-Everything goes through `POST /api/cart` with a JSON body. On success the response **is the cart** (status 200), or `null` when Shopify is not configured. Failures contain a fixed public message and code: `400 { error, code: "invalid" }` for invalid requests, `404 { error, code: "notFound" }` for an expired cart, or `502 { error, code: "backend" }` for a backend failure. Raw backend messages and payloads are never published or logged by this route. Every response is `Cache-Control: private, no-store`. The cart is not wrapped in `{ cart: ... }`.
+Everything goes through `POST /api/cart` with a JSON body. On success the response **is the cart** (status 200), or `null` when Shopify is not configured. Failures contain a fixed public message and code: `400 { error, code: "invalid" }` for invalid requests, `404 { error, code: "notFound" }` for an expired cart, or `502 { error, code: "backend" }` for a backend failure. Raw backend messages and payloads are never published or logged by this route. Every response is `Cache-Control: private, no-store`. The cart is not wrapped in `{ cart: ... }`. Ordinary cart responses set `checkoutUrl` to an empty string; only an explicit `{ action: "checkout", cartId }` handoff returns `{ checkoutUrl }` after a fresh Shopify read and host validation. Cart ids still follow this SDK's browser-storage contract; this change does not migrate them to httpOnly cookies.
 
-Create/add quantities are whole numbers from 1 to 1000; updates accept 0 to 1000, with zero explicitly removing the line. Creating an empty cart is still supported. Malformed JSON, missing quantities on submitted lines, fractions and out-of-range values fail before the SDK call. Validate the same rules in the receiver's forms without rounding invalid input.
+Create/add/update quantities are whole numbers from 1 to 1000. The separate remove action deletes a line; a blank or zero quantity edit must not silently remove it. The low-level server SDK still supports an intentional zero update for callers that explicitly request removal. Creating an empty cart is still supported. Malformed JSON, missing quantities on submitted lines, fractions and out-of-range values fail before the SDK call. Validate the same rules in the receiver's forms without rounding invalid input.
 
 | Action | Body |
 |---|---|
@@ -242,6 +242,8 @@ Create/add quantities are whole numbers from 1 to 1000; updates accept 0 to 1000
 | change quantity | `{ "action": "update", "cartId": id, "lines": [{ "id": lineId, "quantity": 3 }] }` |
 | remove | `{ "action": "remove", "cartId": id, "lineIds": [lineId] }` |
 | discount code | `{ "action": "discount", "cartId": id, "discountCodes": ["CODE"] }` |
+| explicit clear discount | `{ "action": "discount", "cartId": id, "discountCodes": [] }` |
+| checkout handoff | `{ "action": "checkout", "cartId": id }` → `{ checkoutUrl }` |
 
 ### The pattern
 
@@ -257,18 +259,21 @@ import { CartProvider } from "@/lib/shopify/cart-provider";
 // in their cart button, drawer or page ("use client")
 import { useCart } from "@/lib/shopify/cart-provider";
 
-const { cart, ready, busy, error, lines, count, add, update, remove, applyDiscountCodes, checkout } = useCart();
+const { cart, ready, busy, error, lines, count, add, update, remove, applyDiscountCodes, checkout, refresh } = useCart();
 
 add([{ merchandiseId: variantId, quantity: 1 }]);   // add a line (sellingPlanId optional)
 update(line.id, 3);                                  // set a quantity
 remove(line.id);                                     // take a line out
-checkout();                                          // go to Shopify's checkout
+void checkout();                                     // validate a fresh URL, hold the lock and navigate
+void refresh();                                      // review/reconcile a retained cart after a notice
 ```
 
 - Map the names their cart context already uses onto these (`addItem` → `add`, `items` → `lines`, `itemCount` → `count`). Keep their component code; change the context file or the hook it calls.
-- `lines` come from `cartLines(cart)`: `id`, `quantity`, `variantId`, `productTitle`, `productHandle`, `variantTitle` (`null` for a one-variant product), `options`, `image`, `unitPrice`, `total`. `unitPrice` is what one item costs in that line (Shopify's `amountPerQuantity`, so a subscription price shows as such), not the variant's list price.
+- `lines` come from `cartLines(cart)`: `id`, `quantity`, `variantId`, `productTitle`, `productHandle`, `variantTitle` (`null` for a one-variant product), `options`, `image`, `unitPrice`, `total`, `available`, `maxQuantity`. Disable increases when `available` is false; preserve decrement/removal. Only positive known stock caps restrict an otherwise buyable variant; zero/negative/null stock counts do not mean sold out. Keep the generic 1000 quantity limit and Shopify's authority. `unitPrice` is what one item costs in that line (Shopify's `amountPerQuantity`, so a subscription price shows as such), not the variant's list price.
 - `count` is Shopify's total quantity. `ready` is false until the stored cart has been read back: show no "empty cart" before then.
 - The store serializes changes and keeps `busy` true through the queued work. Each submitted add is still an intended action; prevent duplicate submissions in the UI. When Shopify says the stored cart no longer exists (after checkout or expiry), it forgets it and the next add starts a new one. On any other error it keeps the last cart and puts the message in `error`: show it near the button. Checkout stays blocked while a request is pending or an error remains. A failed read retains an inert snapshot; show retry rather than an authoritative empty cart.
+- Confirmed `warnings` carry only allowlisted stock codes. Keep the returned cart/id, show a review notice and do not replay the mutation or treat it as an uncertain transport failure. `refresh()` re-reads the cart and clears the notice. Blank/whitespace discount submissions are rejected; only `applyDiscountCodes([])` clears codes.
+- The provided context holds its navigation lock until a persisted `pageshow`, then calls `restore()` to release it and re-read. An alternative context must wire this event itself. Cancelled navigation without a persisted return still requires reload; do not promise automatic recovery.
 - The cart id is kept in the browser's `localStorage` under `shopify-cart-id`.
 
 **If their cart must stay a different store library** (Redux, Zustand, their own reducer), call `/api/cart` yourself with the kit's client and keep the same rules (one change at a time, handle a cart that is gone, show errors, keep the cart on error):
@@ -291,8 +296,8 @@ export async function addToCart(variantId: string, quantity = 1) {
 
 - **Own store only, on load:** if a cart id is stored, `get` it. If that returns `null` (Shopify drops carts after checkout or expiry), remove the stored id and start empty.
 - **Own store only, state:** hold Shopify's cart in their existing context or store. Map it to their line shape for display: `cart.lines.edges[].node` has `id`, `quantity`, `cost.totalAmount` and `merchandise` (the variant: `title`, `price`, `selectedOptions`, and `product.title`, `product.handle`, `product.featuredImage`).
-- **Totals:** show `cart.cost.subtotalAmount` / `cart.cost.totalAmount`. Never add prices up in the browser; Shopify applies discounts and tax.
-- **Checkout button:** `checkout()` from `useCart()`. An alternative store must also wait for a successful cart read, no pending changes and no unresolved error before navigating to `cart.checkoutUrl`. Their fake `/checkout` page and card form are dead code once the button goes to Shopify: see "Dead code" below.
+- **Totals:** show `cart.cost.subtotalAmount` / `cart.cost.totalAmount`. Never add prices up in the browser; Shopify applies discounts and tax. `cart.discount` sums only returned `LINE_ITEM` allocations in the subtotal currency, excluding shipping and foreign currency. Do not infer a saving from subtotal minus total.
+- **Checkout button:** `checkout()` from `useCart()`. An alternative store must also wait for a successful cart read, no pending changes and no unresolved error then obtain the handoff with `cartCheckoutUrl(cart.id)` from the browser client. Do not navigate from an ordinary cached cart payload. Configure server-only `SHOPIFY_CHECKOUT_HOSTS` as comma-separated, explicitly approved custom hosts when needed; the configured store and `checkout.shopify.com` are accepted by default. Hosts are trimmed/lowercased and matched exactly; HTTPS, credentials and nondefault-port checks remain enforced. Explicit `mock.shop` demo mode also accepts its subdomains, matching the Astro adapter; merchant configuration does not. Their fake `/checkout` page and card form are dead code once the button goes to Shopify: see "Dead code" below.
 - **Errors:** show the message near the button and keep the cart as it was. `CartRequestError.code === "notFound"` identifies expiry without matching raw Shopify text. Never pretend an item was added when the request failed. The transport does not retry mutations after network, HTTP or GraphQL failures; read the cart after an ambiguous result before offering another attempt. Hold any receiver busy lock through its fragment refresh, and restore a failed removal's visible line.
 
 ### Variants
