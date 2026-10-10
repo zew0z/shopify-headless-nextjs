@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { analyticsConfiguration, checkAnalytics } from "../shopify/analytics-setup.mjs";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "./args.mjs";
@@ -250,6 +249,8 @@ switch (command) {
     process.exit(run.status ?? 1);
   }
   case "analytics-configure": {
+    if (framework === "astro") { bad("Shopify analytics tooling is not installed for Astro. Follow docs/frontend-wiring-astro.md for the separate consent and analytics integration task."); process.exit(1); }
+    const { analyticsConfiguration } = await import("../shopify/analytics-setup.mjs");
     const { changes, issues } = analyticsConfiguration(flags, readEnv());
     if (issues.length) { issues.forEach(bad); process.exit(1); }
     for (const [key, value] of Object.entries(changes)) {
@@ -260,6 +261,8 @@ switch (command) {
     break;
   }
   case "analytics-check": {
+    if (framework === "astro") { bad("Shopify analytics tooling is not installed for Astro. Follow docs/frontend-wiring-astro.md for the separate consent and analytics integration task."); process.exit(1); }
+    const { checkAnalytics } = await import("../shopify/analytics-setup.mjs");
     const checks = await checkAnalytics({ env: readEnv(), site: typeof flags.site === "string" ? flags.site : undefined });
     for (const check of checks) { (check.ok ? ok : bad)(check.what); if (!check.ok) check.details.forEach(info); }
     process.exit(checks.every(c => c.ok) ? 0 : 1);

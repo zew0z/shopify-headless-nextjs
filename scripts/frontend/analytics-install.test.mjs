@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, symlinkSync } from "node:fs";
+import { existsSync, writeFileSync, symlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { planKitInstall } from "./kit.mjs";
@@ -15,6 +15,9 @@ for(const appRoot of ["","src/"])test(`installed ${appRoot||'root '}app analytic
   const run=spawnSync(process.execPath,[path.join(kitRoot,"node_modules/typescript/bin/tsc"),'--noEmit','--strict','--skipLibCheck','--jsx','react-jsx','--target','ES2022','--module','ESNext','--moduleResolution','bundler',`${appRoot}app/layout.tsx`,`${appRoot}app/api/shopify/analytics/config/route.ts`,`${appRoot}app/api/[version]/graphql.json/route.ts`],{cwd:target,encoding:'utf8'});
   assert.equal(run.status,0,run.stdout+run.stderr);
   const env={...process.env,SHOPIFY_ANALYTICS_ENABLED:'1',NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN:'fixture.myshopify.com',SHOPIFY_ANALYTICS_SHOP_ID:'1',SHOPIFY_ANALYTICS_ORIGINS:'https://shop.example.com',SHOPIFY_ANALYTICS_COUNTRY:'US',SHOPIFY_ANALYTICS_LANGUAGE:'EN',SHOPIFY_ANALYTICS_CURRENCY:'USD'};
+  const configure=spawnSync(process.execPath,['scripts/setup/cli.mjs','analytics-configure','--disable','--dry-run'],{cwd:target,env,encoding:'utf8'});
+  assert.equal(configure.status,0,configure.stdout+configure.stderr);assert.match(configure.stdout,/SHOPIFY_ANALYTICS_ENABLED=0/);assert.match(configure.stdout,/Dry run: nothing written/);
+  assert.equal(existsSync(path.join(target,'.env.local')),false);
   const check=spawnSync(process.execPath,['scripts/setup/cli.mjs','analytics-check'],{cwd:target,env,encoding:'utf8'});assert.equal(check.status,0,check.stdout+check.stderr);
   assert.equal(applyKitInstall(planKitInstall({kitRoot,target,appRoot}),target,{}).changed,0);
 });

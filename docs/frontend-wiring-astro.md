@@ -79,4 +79,6 @@ Run `npm run shop-setup -- frontend-check` after connecting the provider. It ins
 
 Before sign-off, run the received repo's check/build and npm ci, then browse desktop and mobile products/collections, select each variant, add/update/remove a cart line, refresh to prove cookie persistence, test discounts, and inspect the Shopify-hosted checkout entry. Test the no-JS form path in template sites. Store-specific dashboard analytics, API content definitions, tax, shipping, pickup and payment remain unverified until checked on the development store with explicit authorization. Existing Next-specific analytics components are not installed in Astro; any Astro analytics integration needs a separate consent and dashboard verification task.
 
+In Astro receivers, `analytics-configure` and `analytics-check` stop with a clear unsupported message. Other setup commands load without the Next-only analytics SDK; the analytics command implementation loads only when requested by a Next receiver.
+
 The protected `.claude/skills/shopify-connect-frontend/SKILL.md` remains Next-only and was not changed. This normal guide is the Astro workflow. Updating that protected skill remains a separate approval item.
