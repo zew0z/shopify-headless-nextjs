@@ -2,7 +2,7 @@
  * The cart's brain, without React: one change at a time, the cart id kept in
  * the browser, Shopify's cart as the only truth. cart-provider.tsx wraps it.
  */
-import { cartAction, isShopifyCartId } from "./cart-client";
+import { cartAction, CartRequestError, isShopifyCartId } from "./cart-client";
 import type { Cart, CartItemInput, Money, SelectedOption, ShopifyImage } from "./types";
 
 export interface CartState { cart: Cart | null; ready: boolean; busy: boolean; error: string | null }
@@ -27,12 +27,12 @@ export function localCartStorage(key = "shopify-cart-id"): CartStorage {
 }
 
 /**
- * Shopify answers a change to a cart it no longer has with a user error ("The
- * specified cart does not exist."), which /api/cart turns into a thrown error.
+ * Shopify answers a change to a cart it no longer has with a user error, which
+ * /api/cart exposes as the public notFound code. Older routes used provider text.
  * Reading such a cart gives null instead. Both mean the cart is gone.
  */
 function isCartGone(err: unknown): boolean {
-  return err instanceof Error && /cart does not exist/i.test(err.message);
+  return (err instanceof CartRequestError && err.code === "notFound") || (err instanceof Error && /cart does not exist/i.test(err.message));
 }
 
 export function createCartStore(
@@ -57,6 +57,7 @@ export function createCartStore(
   let state: CartState = { cart: null, ready: false, busy: false, error: null };
   const listeners = new Set<() => void>();
   let queue: Promise<void> = Promise.resolve();
+  let pending = 0;
 
   const set = (patch: Partial<CartState>) => {
     state = { ...state, ...patch };
@@ -77,15 +78,17 @@ export function createCartStore(
   // Changes wait for each other, so two quick clicks never create two carts.
   // A change that returns undefined has nothing to do and leaves the state alone.
   function run(change: () => Promise<Cart | null | undefined>): Promise<void> {
+    pending++;
     const next = queue.then(async () => {
-      set({ busy: true });
       try {
+        set({ busy: true });
         const cart = await change();
         if (cart !== undefined) keep(cart);
       } catch (err) {
         set({ error: err instanceof Error ? err.message : "The cart could not be updated" });
       } finally {
-        set({ busy: false, ready: true });
+        pending--;
+        set({ busy: pending > 0, ready: true });
       }
     });
     // A change that fails must not freeze the ones behind it; the caller still sees the failure.
@@ -147,7 +150,7 @@ export function createCartStore(
       return cartId ? changeStored(() => action({ action: "discount", cartId, discountCodes: codes })) : undefined;
     }),
     checkout() {
-      if (state.cart?.checkoutUrl) goTo(state.cart.checkoutUrl);
+      if (pending === 0 && state.ready && !state.error && state.cart?.checkoutUrl) goTo(state.cart.checkoutUrl);
     },
   };
 }

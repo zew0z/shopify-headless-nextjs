@@ -2,12 +2,16 @@
  * Browser-side client for the /api/cart route.
  *
  * The route answers with the cart itself (or null when Shopify is not
- * configured), never wrapped in { cart }. Failures come back as { error }
+ * configured), never wrapped in { cart }. Failures come back as { error, code }
  * with a 4xx/5xx status, and are thrown here so callers never mistake a
  * failed request for an empty answer.
  */
 
 import type { Cart } from "./types";
+
+export class CartRequestError extends Error {
+  constructor(message: string, readonly code?: string) { super(message); this.name = "CartRequestError"; }
+}
 
 export async function cartAction(body: Record<string, unknown>): Promise<Cart | null> {
   const res = await fetch("/api/cart", {
@@ -16,7 +20,7 @@ export async function cartAction(body: Record<string, unknown>): Promise<Cart | 
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => undefined);
-  if (!res.ok) throw new Error(data?.error ?? `Cart request failed (${res.status})`);
+  if (!res.ok) throw new CartRequestError(typeof data?.error === "string" ? data.error : `Cart request failed (${res.status})`, typeof data?.code === "string" ? data.code : undefined);
   return data ?? null;
 }
 

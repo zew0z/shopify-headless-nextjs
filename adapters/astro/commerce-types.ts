@@ -270,6 +270,8 @@ export interface CommerceProvider {
   isConfigured(): boolean;
   /** Sorts each listing kind supports, first = default. */
   sorts: Record<ListingKind, readonly SortOption[]>;
+  /** Listing kinds with native Shopify facets. Optional for older receiver contracts. */
+  filterKinds?: readonly ListingKind[];
 
   listProducts(query: ListingQuery): Promise<ProductConnection>;
   searchProducts(term: string, query: ListingQuery): Promise<ProductConnection>;

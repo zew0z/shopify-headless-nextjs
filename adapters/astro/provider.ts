@@ -193,11 +193,11 @@ const storefront = createStorefront(options);
 
 type MutationPayload = { result: { cart: ShopifyCart | null; userErrors: ShopifyUserError[] } };
 
-function cartResponse(payload: MutationPayload, errorCode: "unavailable" | "coupon" = "unavailable"): CartResponse {
+function cartResponse(payload: MutationPayload, errorCode: "unavailable" | "coupon" = "unavailable", existingToken: string | null = null): CartResponse {
   const { cart: node, userErrors } = payload.result;
   return {
     cart: node ? cart(node) : null,
-    token: node?.id ?? null,
+    token: node?.id ?? (userErrors.length ? existingToken : null),
     // Shopify can return the cart together with an error (e.g. quantity capped at stock).
     ...(userErrors.length && { error: { code: errorCode, message: userErrors[0]!.message } }),
   };
@@ -213,13 +213,15 @@ const mutate = (session: CommerceSession, query: string, variables: Record<strin
   storefront<MutationPayload>({ query, lang: session.lang, buyerIp: session.clientAddress, variables: { cartId: session.token, ...variables } });
 
 async function resolveVariant(session: CommerceSession, input: AddLineInput) {
-  if (input.handle && input.options.length) {
+  if (input.options.length) {
+    if (!input.handle) return null;
     const { product: found } = await storefront<{ product: { variantBySelectedOptions: { id: string } | null } | null }>({
       query: VARIANT_BY_OPTIONS_QUERY,
       lang: session.lang,
       variables: { handle: input.handle, selectedOptions: input.options },
     });
-    if (found?.variantBySelectedOptions) return found.variantBySelectedOptions.id;
+    // Posted choices are authoritative, including native forms with a stale hidden id.
+    return found?.variantBySelectedOptions?.id ?? null;
   }
   return input.merchandiseId?.startsWith("gid://shopify/ProductVariant/") ? input.merchandiseId : null;
 }
@@ -228,7 +230,7 @@ async function setDiscountCodes(session: CommerceSession, change: (codes: string
   const current = await fetchCart(session);
   if (!current) return { cart: null, token: null, error: { code: "notFound" } };
   const codes = change(current.discountCodes.map((d) => d.code));
-  return cartResponse(await mutate(session, CART_DISCOUNT_CODES, { discountCodes: codes }), "coupon");
+  return cartResponse(await mutate(session, CART_DISCOUNT_CODES, { discountCodes: codes }), "coupon", session.token);
 }
 
 // ---------------------------------------------------------------- provider
@@ -237,12 +239,14 @@ const shopifyProvider: CommerceProvider = {
   name: "Shopify",
   isConfigured: () => storefront.isConfigured(),
   sorts: SORTS,
+  filterKinds: ["collection", "search"],
 
   async listProducts(query) {
+    if (query.filters?.length) throw new Error("Shopify facets require a collection or search listing.");
     const { filters: _unused, ...variables } = listingVariables("all", query);
     void _unused;
     const data = await storefront<{ products: ShopifyProductConnection }>({ query: PRODUCTS_QUERY, lang: query.lang, variables });
-    return connection(data.products);
+    return connection({ ...data.products, filters: [] });
   },
 
   async searchProducts(term, query) {
@@ -326,16 +330,16 @@ const shopifyProvider: CommerceProvider = {
     const payload = current
       ? await mutate(session, CART_LINES_ADD, { lines })
       : await storefront<MutationPayload>({ query: CART_CREATE, lang: session.lang, buyerIp: session.clientAddress, variables: { lines } });
-    return cartResponse(payload);
+    return cartResponse(payload, "unavailable", current ? session.token : null);
   },
 
   async updateLine(session, lineId, quantity) {
     if (!Number.isSafeInteger(quantity) || quantity < 0 || quantity > 1000) return { cart: null, token: session.token, error: { code: "invalid" } };
-    return cartResponse(await mutate(session, CART_LINES_UPDATE, { lines: [{ id: lineId, quantity }] }));
+    return cartResponse(await mutate(session, CART_LINES_UPDATE, { lines: [{ id: lineId, quantity }] }), "unavailable", session.token);
   },
 
   async removeLine(session, lineId) {
-    return cartResponse(await mutate(session, CART_LINES_REMOVE, { lineIds: [lineId] }));
+    return cartResponse(await mutate(session, CART_LINES_REMOVE, { lineIds: [lineId] }), "unavailable", session.token);
   },
 
   applyDiscount: (session, code) => setDiscountCodes(session, (codes) => [...new Set([...codes, code])]),

@@ -141,7 +141,7 @@ export async function shopifyFetch<T>({
       clearTimeout(timeoutId);
 
       // Handle rate limiting (429) or transient gateway errors (503)
-      if (res.status === 429 || res.status === 503) {
+      if (!isMutation && (res.status === 429 || res.status === 503)) {
         if (attempt < retries) {
           // Check for Retry-After header or compute exponential jittered backoff
           const retryAfterHeader = res.headers.get("Retry-After");
@@ -175,7 +175,7 @@ export async function shopifyFetch<T>({
           (e) => e.extensions?.code === "THROTTLED" || e.message?.toLowerCase().includes("throttled")
         );
 
-        if (isThrottled && attempt < retries) {
+        if (!isMutation && isThrottled && attempt < retries) {
           const delayMs = shopifyConfig.retryDelayMs * Math.pow(2, attempt) + Math.random() * 200;
           console.warn(
             `[Shopify SDK] GraphQL THROTTLED error. Retrying attempt ${attempt + 1}/${retries} in ${Math.round(delayMs)}ms...`

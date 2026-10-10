@@ -35,6 +35,11 @@ test("an error answer throws Shopify's message", async () => {
   await assert.rejects(cartAction({ action: "add", cartId: CART.id, lines: [] }), /out of stock/);
 });
 
+test("a sanitized public cart error retains its code for expiry handling", async () => {
+  stubFetch(404, { error: "Your cart expired. Add the items again.", code: "notFound" });
+  await assert.rejects(cartAction({ action: "get", cartId: CART.id }), (error) => error.code === "notFound");
+});
+
 test("a failure that is not JSON still throws, with the status", async () => {
   stubFetch(502, "<html>Bad gateway</html>", "text/html");
   await assert.rejects(cartAction({ action: "get", cartId: CART.id }), /Cart request failed \(502\)/);

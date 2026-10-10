@@ -13,9 +13,10 @@ export async function GET(req: NextRequest) {
   try {
     const results = await predictiveSearch(query, { limit });
     return NextResponse.json(results);
-  } catch (error) {
-    console.error("[Search Route Error]:", error);
-    const message = error instanceof Error ? error.message : "Search failed";
-    return NextResponse.json({ error: message }, { status: 502 });
+  } catch {
+    return NextResponse.json(
+      { error: "Search is unavailable. Try again shortly.", code: "backend" },
+      { status: 502, headers: { "Cache-Control": "private, no-store" } }
+    );
   }
 }

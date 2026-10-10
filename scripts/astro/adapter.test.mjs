@@ -99,6 +99,45 @@ test("search and collection filters are sent to Shopify, missing collection rema
   assert.equal(await provider.getCollection("absent", { lang: "en", sort: "featured", pageSize: 24 }), null);
 });
 
+test("facet capability is explicit and all-products filters are refused before a request", async () => {
+  const calls = [];
+  const provider = createShopifyCommerce(clientOptions(async (url, init) => { calls.push(init); return response({ products: { nodes: [item], pageInfo, filters: [{ id: "invented" }] } }); }));
+  assert.deepEqual(provider.filterKinds, ["collection", "search"]);
+  await assert.rejects(provider.listProducts({ lang: "en", sort: "title", pageSize: 12, filters: ['{"available":true}'] }), /collection or search/);
+  assert.equal(calls.length, 0);
+  assert.deepEqual((await provider.listProducts({ lang: "en", sort: "title", pageSize: 12 })).filters, []);
+});
+
+test("posted option choices never fall back to a stale hidden variant", async () => {
+  for (const found of [null, { variantBySelectedOptions: null }]) {
+    const calls = [];
+    const provider = createShopifyCommerce(clientOptions(async (url, init) => {
+      const body = JSON.parse(init.body); calls.push(body);
+      if (body.query.includes("query VariantByOptions")) return response({ product: found });
+      return response(body.query.includes("query Cart(") ? { cart } : { result: { cart, userErrors: [] } });
+    }));
+    const result = await provider.addLine(session, { handle: "fixture", merchandiseId: "gid://shopify/ProductVariant/2", options: [{ name: "Size", value: "Absent" }], quantity: 1 });
+    assert.equal(result.error?.code, "unavailable");
+    assert.equal(result.token, session.token);
+    assert.equal(calls.length, 1);
+    assert.ok(!calls.some(({ query }) => /^\s*mutation/.test(query)));
+  }
+  const noHandle = createShopifyCommerce(clientOptions(async () => { throw new Error("Must not call Shopify without the posted product handle"); }));
+  assert.equal((await noHandle.addLine(session, { merchandiseId: "gid://shopify/ProductVariant/2", options: [{ name: "Size", value: "Absent" }], quantity: 1 })).error?.code, "unavailable");
+});
+
+test("valid posted options select the resolved variant instead of the hidden id", async () => {
+  const calls = [];
+  const provider = createShopifyCommerce(clientOptions(async (url, init) => {
+    const body = JSON.parse(init.body); calls.push(body);
+    if (body.query.includes("query VariantByOptions")) return response({ product: { variantBySelectedOptions: { id: "gid://shopify/ProductVariant/77" } } });
+    return response(body.query.includes("query Cart(") ? { cart } : { result: { cart, userErrors: [] } });
+  }));
+  const result = await provider.addLine(session, { handle: "fixture", merchandiseId: "gid://shopify/ProductVariant/2", options: [{ name: "Size", value: "Large" }], quantity: 1 });
+  assert.equal(result.error, undefined);
+  assert.equal(calls.find(({ query }) => /^\s*mutation/.test(query)).variables.lines[0].merchandiseId, "gid://shopify/ProductVariant/77");
+});
+
 test("collections and sitemap read every page and refuse repeated cursors", async () => {
   const calls = [];
   const provider = createShopifyCommerce(clientOptions(async (url, init) => {
@@ -140,8 +179,10 @@ test("shop profile and FAQ stay empty until owner content exists, and backend fa
 
 test("invalid direct cart quantities are refused before touching the backend", async () => {
   const provider = createShopifyCommerce(clientOptions(async () => { throw new Error("backend must not be called"); }));
-  assert.equal((await provider.addLine(session, { merchandiseId: "gid://shopify/ProductVariant/2", options: [], quantity: -1 })).error.code, "invalid");
-  assert.equal((await provider.updateLine(session, "line", 1.2)).error.code, "invalid");
+  for (const quantity of [-1, -0.5, 0.5, 1.2, undefined, NaN, Infinity, 1001]) {
+    assert.equal((await provider.addLine(session, { merchandiseId: "gid://shopify/ProductVariant/2", options: [], quantity })).error.code, "invalid");
+    assert.equal((await provider.updateLine(session, "line", quantity)).error.code, "invalid");
+  }
 });
 
 test("a failed add mutation is not turned into a fresh cart", async () => {
@@ -204,6 +245,28 @@ test("cart API network failure preserves the existing session", async () => {
   assert.equal(result.status, 502);
   assert.equal(c.changed.length, 0);
   assert.equal((await result.text()).includes("private response"), false);
+});
+
+test("public cart errors contain only known codes and retain the failed mutation session", async () => {
+  for (const code of ["coupon", "PRIVATE-DETAIL-SENTINEL"]) {
+    const c = context({ action: "discount", code: "INVALID" });
+    const endpoint = createCartEndpoint({ applyDiscount: async () => ({ cart: null, token: null, error: { code, message: "PRIVATE-DETAIL-SENTINEL", debug: session.token } }) });
+    const result = await endpoint(c);
+    const json = await result.json();
+    assert.deepEqual(json.error, { code: code === "coupon" ? "coupon" : "backend" });
+    assert.doesNotMatch(JSON.stringify(json), /PRIVATE-DETAIL-SENTINEL|\?key=/);
+    assert.equal(c.changed.length, 0);
+    assert.equal(result.headers.get("cache-control"), "private, no-store");
+  }
+});
+
+test("Shopify user errors without a returned cart preserve the existing provider token", async () => {
+  const provider = createShopifyCommerce(clientOptions(async (url, init) => response(/^\s*mutation/.test(JSON.parse(init.body).query)
+    ? { result: { cart: null, userErrors: [{ message: "Coupon rejected", field: [] }] } }
+    : { cart })));
+  const result = await provider.applyDiscount(session, "INVALID");
+  assert.equal(result.error.code, "coupon");
+  assert.equal(result.token, session.token);
 });
 
 test("browser mutations are serialized; failure does not replay or block the next action", async () => {

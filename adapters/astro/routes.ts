@@ -13,6 +13,7 @@ export interface CartContext {
 
 /** Optional standalone API. Template integrations keep their existing commerce form routes and cookie handler. */
 export function createCartEndpoint(provider: CommerceProvider, { language = "en", cookie = "shopify_cart" } = {}) {
+  const publicCodes = new Set(["invalid", "rateLimited", "unavailable", "notFound", "backend", "coupon"]);
   const reply = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store", Vary: "Cookie" } });
   return async (context: CartContext): Promise<Response> => {
     const { request, url, cookies } = context;
@@ -20,9 +21,9 @@ export function createCartEndpoint(provider: CommerceProvider, { language = "en"
     const session: CommerceSession = { token, lang: language, clientAddress: context.clientAddress };
     const remember = (response: CartResponse) => {
       if (response.token) cookies.set(cookie, response.token, { path: "/", httpOnly: true, secure: url.protocol === "https:", sameSite: "lax", maxAge: 60 * 60 * 24 * 10 });
-      else cookies.delete(cookie, { path: "/" });
+      else if (!response.error) cookies.delete(cookie, { path: "/" });
       // Cart ids contain an access key. The browser gets cart display data only.
-      return reply({ cart: response.cart, ...(response.error && { error: response.error }) });
+      return reply({ cart: response.cart, ...(response.error && { error: { code: publicCodes.has(response.error.code) ? response.error.code : "backend" } }) });
     };
     try {
       if (request.method === "GET") return remember(await provider.getCart(session));
@@ -58,7 +59,7 @@ export function createCartEndpoint(provider: CommerceProvider, { language = "en"
       return reply({ error: "Invalid cart action" }, 400);
     } catch {
       // Keep the session on network failures, and never expose a token or buyer payload.
-      return reply({ error: "Shopify is unavailable. Your cart has been kept." }, 502);
+      return reply({ error: "Shopify is unavailable. Your cart has been kept; check it before trying again." }, 502);
     }
   };
 }

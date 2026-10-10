@@ -49,6 +49,12 @@ Update the module's `provides.commerce` resolver to select this provider explici
 
 Keep `src/modules/commerce/lib/cart.ts` and its httpOnly session cookie. It already supplies `lang`, `clientAddress` and the cookie token to the provider and stores the returned token after each mutation. The adapter preserves this contract. Validate forms through the template's existing form helpers. All public links still use the site's localized paths. There is no Next migration.
 
+When selected options are posted, they are authoritative. The adapter resolves them using the product handle and refuses unresolved combinations, even if a form also posts a previously selected hidden variant ID. Keep the displayed price, stock, SKU and add button synchronized with that selection. Quantities must be whole numbers: 1–1000 when adding, 0–1000 when updating; zero explicitly removes the line. Do not round or replace malformed form input with a default before validation.
+
+The provider exposes optional `filterKinds = ["collection", "search"]`. Extend an older template's `CommerceProvider` type with `filterKinds?: readonly ListingKind[]` and preserve that property in any bridge. Only show native facet controls when `commerce.filterKinds?.includes(kind) ?? true`. Shopify's all-products query has no native facets: the adapter always returns an empty filter list and rejects nonempty `query.filters` there. Normalize or discard unsupported facet URL parameters before calling it. Collections and search retain their native filters.
+
+Shopify may return both a cart and user errors, or a user error without a cart. Keep the session token on a failed mutation, display the translated error, and use any returned cart as the current state. Public Action/API errors should contain an allowlisted code only; never forward the provider's message, exception text, request payload or access key. A failed read must show an unavailable state or an inert retained snapshot, with retry available and checkout disabled. It must not become an authoritative empty cart.
+
 The template's `checkout.url(session)` retrieves the current Shopify cart's hosted URL. It accepts HTTPS on the configured store or Shopify checkout host, and returns null for an empty/expired cart. Checkout/payment data stays on Shopify. Do not build a card form, supply a guessed checkout URL, or mark payment/shipping verified from a demo checkout link.
 
 Product-specific specification metafields use the owner's real namespace/key choices through `specMetafields` and return as `product.specs`. Preserve and migrate any additional provider fields before replacing site-specific behavior. Product detail reads return the first 10 collections and 250 variants, so verify those caps against the actual catalogue before sign-off.
@@ -67,11 +73,15 @@ const { checkoutUrl } = await cart.checkout();
 if (checkoutUrl) window.location.assign(checkoutUrl);
 ```
 
-The client serializes mutations and propagates errors, keeping the server cookie when a request fails. Keep the existing UI and show an error so a shopper can inspect their cart before retrying. The template's existing progressive forms remain the preferred integration there; do not replace them with this optional API.
+The client serializes mutations and propagates errors, keeping the server cookie when a request fails. Public provider errors are `{ error: { code } }`; use the site's translations for known codes. Transport failures return a fixed message with status 502. Keep the existing UI and show an error so a shopper can inspect their cart before retrying. The template's existing progressive forms remain the preferred integration there; do not replace them with this optional API.
+
+Serialization preserves every submitted action. Disable duplicate submissions in the UI and hold its busy lock through mutation, fragment refresh and DOM replacement. Replacement fragments need a stable target; discard superseded search responses and report visible search failures. Do not replay an ambiguous write: read the cart before offering another attempt. Failed removals must restore the visible line and cancel pending removal animation. Clean up cancelled view transitions with both fulfillment and rejection handlers.
 
 ## Cache, content and validation
 
 Use the template's finite `Astro.cache.set({ maxAge, swr, tags: ["commerce"] })` for public catalogue pages and its verified HMAC webhook invalidation. Cart, checkout and account responses stay `Cache-Control: private, no-store`; never use a shared page cache for them. The adapter deliberately does not send Next-specific fetch options. Do not alter Astro's origin checking, allowed proxy hosts or CSP to make requests pass. Permit Shopify images using existing module CSP and any `astro:assets` remote image rules, then check images in the browser.
+
+Render cart totals from the provider's `cart.total` and line money values, including discounts, rather than adding catalogue prices. Sanitize merchant-authored HTML at the receiver's rendering boundary using its existing sanitizer. Product specifications, long titles, and cart controls must wrap on narrow screens with JavaScript disabled as well as enabled. These rendering, fragment, animation and form concerns belong to the receiver; kit installation alone does not implement them.
 
 `createAstroContent()` exposes the toolkit's owner-authored `getStoreProfile()` and `getFaq()`. The owner must first create/fill the `store_profile` and `faq_item` definitions using the toolkit's separately authorized store setup. Blank profile = null, empty FAQ = []; hide absent fields. Errors remain errors. Cache public content for at most one hour with a content tag. Never fill missing shop details with code literals.
 

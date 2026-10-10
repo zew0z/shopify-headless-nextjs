@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { loadSdk } from "../test-support/load-sdk.mjs";
 
 const { createCartStore, cartLines } = await loadSdk("cart-store");
+const { CartRequestError } = await loadSdk("cart-client");
 
 const cart = (id, lines = []) => ({ id, checkoutUrl: `https://shop/checkout/${id}`, totalQuantity: lines.length, lines: { edges: lines.map((node) => ({ node })) }, cost: {} });
 const memory = (id = null) => ({ id, get() { return this.id; }, set(v) { this.id = v; }, clear() { this.id = null; } });
@@ -75,6 +76,64 @@ test("checkout goes to Shopify's checkoutUrl", async () => {
   assert.equal(went, "https://shop/checkout/gid://shopify/Cart/1");
 });
 
+test("checkout stays blocked during queued writes, including before the first microtask", async () => {
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const went = [];
+  const store = createCartStore({ action: async (body) => { if (body.action === "update") await held; return cart("gid://shopify/Cart/1"); }, storage: memory("gid://shopify/Cart/1"), goTo: (url) => went.push(url) });
+  await store.load();
+  const update = store.update("line", 2);
+  store.checkout();
+  await Promise.resolve();
+  store.checkout();
+  assert.deepEqual(went, []);
+  release();
+  await update;
+  store.checkout();
+  assert.equal(went.length, 1);
+});
+
+test("a read outage retains an inert cart until a fresh read succeeds", async () => {
+  let fail = false;
+  const went = [];
+  const storage = memory("gid://shopify/Cart/1");
+  const store = createCartStore({ action: async () => { if (fail) throw new Error("Cart unavailable"); return cart(storage.id); }, storage, goTo: (url) => went.push(url) });
+  await store.load();
+  const before = store.getState().cart;
+  fail = true;
+  await store.load();
+  assert.equal(store.getState().cart, before);
+  assert.equal(storage.id, before.id);
+  store.checkout();
+  assert.deepEqual(went, []);
+  fail = false;
+  await store.load();
+  store.checkout();
+  assert.equal(went.length, 1);
+});
+
+test("busy stays true until every queued mutation settles", async () => {
+  const gates = Array.from({ length: 2 }, () => {
+    let release;
+    const wait = new Promise((resolve) => { release = resolve; });
+    return { wait, release };
+  });
+  let next = 0;
+  const store = createCartStore({ action: async (body) => { if (body.action !== "get") await gates[next++].wait; return cart("gid://shopify/Cart/1"); }, storage: memory("gid://shopify/Cart/1") });
+  await store.load();
+  const busy = [];
+  store.subscribe(() => busy.push(store.getState().busy));
+  const first = store.update("line", 2);
+  const second = store.remove("line");
+  gates[0].release();
+  await first;
+  assert.equal(store.getState().busy, true);
+  gates[1].release();
+  await second;
+  assert.equal(store.getState().busy, false);
+  assert.ok(busy.slice(0, -1).every(Boolean), "no idle notification between queued writes");
+});
+
 test("update and remove with no stored cart change nothing and call nothing", async () => {
   const calls = [];
   const store = createCartStore({ action: async (b) => { calls.push(b); return null; }, storage: memory() });
@@ -118,6 +177,24 @@ test("the cart fragment asks Shopify for the price per quantity of each line", a
 });
 
 const GONE = "Shopify Cart Error: The specified cart does not exist.";
+
+test("public notFound codes recover an expired cart without matching provider text", async () => {
+  const calls = [];
+  const storage = memory("gid://shopify/Cart/old");
+  const action = async (body) => {
+    calls.push(body.action);
+    if (body.action !== "create") throw new CartRequestError("Your cart expired. Add the items again.", "notFound");
+    return cart("gid://shopify/Cart/new");
+  };
+  const store = createCartStore({ action, storage });
+  await store.add([{ merchandiseId: "v1", quantity: 1 }]);
+  assert.deepEqual(calls, ["add", "create"]);
+  assert.equal(storage.get(), "gid://shopify/Cart/new");
+  await store.remove("line");
+  assert.equal(storage.get(), null);
+  assert.equal(store.getState().cart, null);
+  assert.equal(store.getState().error, "Your cart expired. Add the items again.");
+});
 
 test("add to a cart Shopify reports as not existing (an error, not null) starts a new one", async () => {
   const calls = [];
