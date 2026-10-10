@@ -45,8 +45,13 @@ the answer here.
 ## Auth
 
 ### "Invalid API key or access token (unrecognized login or wrong password)"
-Wrong token family. Only `shpat_` talks to the Admin API; the Headless channel
-gives Storefront tokens, which cannot write.
+Check the intended API, credential slot and granted scopes. Token strings are
+opaque; a prefix such as `shpat_` does not determine API permissions. Storefront
+clients read only Storefront settings and use the configured public/private
+header. `SHOPIFY_ADMIN_TOKEN` stays separate; there is no fallback to it.
+Authentication failures remain errors. See Shopify's
+[Storefront authentication reference](https://shopify.dev/docs/api/storefront/2026-07#authentication)
+and [Admin app authentication guide](https://shopify.dev/docs/apps/build/authentication-authorization/client-credentials-grant?lang=node).
 
 ### "Service is not valid for authentication"
 An `atkn_` app-automation token against the store Admin API. Valid, but for App

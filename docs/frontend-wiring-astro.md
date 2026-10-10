@@ -21,6 +21,8 @@ Set these through the owner's secure local/server environment:
 
 No `PUBLIC_` or `NEXT_PUBLIC_` token is required. An Admin token is never used by the storefront. A missing domain or token fails explicitly; the adapter does not invent products or silently select a demo. For generic local testing, explicitly use `SHOPIFY_STORE_DOMAIN=mock.shop`. The public demo receives no store tokens or buyer IP, even if other variables are present. It cannot verify merchant content, stock, shipping, payment or analytics configuration.
 
+Storefront credentials are opaque: do not classify them by prefix. The private slot selects `Shopify-Storefront-Private-Token`; the public slot selects `X-Shopify-Storefront-Access-Token`. The adapter never reads `SHOPIFY_ADMIN_TOKEN` and preserves Shopify authentication failures. Keep private tokens server-side. [Shopify documents these authentication headers](https://shopify.dev/docs/api/storefront/2026-07#authentication); choosing a slot does not verify authorization.
+
 Each request supplies its own language, cart token and trusted `Astro.clientAddress`. Do not set a shared global buyer or trust arbitrary forwarded headers yourself. The transport forwards buyer IP only with a private token. Catalogue and cart requests throw on network/GraphQL failures. Network failures never replay cart mutations or create replacement carts: a successful read must first establish that a cart expired.
 
 ## NOTIXV template integration

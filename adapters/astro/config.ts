@@ -26,5 +26,6 @@ export function validateConfig(config: StorefrontConfig): void {
   }
   if (!/^20\d\d-(01|04|07|10)$/.test(config.apiVersion)) throw new Error("SHOPIFY_API_VERSION must be a quarterly version such as 2026-07.");
   if (config.domain !== "mock.shop" && !config.publicToken && !config.privateToken) throw new Error("Set a server-side Storefront token; an Admin token is not used by the storefront.");
-  if (/^shpat_/.test(config.publicToken) || /^shpat_/.test(config.privateToken)) throw new Error("An Admin token cannot be used as a Storefront credential.");
+  // Credentials are opaque: their configured slot selects the Storefront header.
+  // Shopify validates authorization; a prefix cannot establish a token's role or scopes.
 }

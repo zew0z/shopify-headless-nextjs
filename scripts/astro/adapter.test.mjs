@@ -23,14 +23,55 @@ const session = { lang: "en", clientAddress: "192.0.2.1", token: "gid://shopify/
 const cart = { id: session.token, checkoutUrl: "https://fixture.myshopify.com/checkouts/test", totalQuantity: 1, cost: { subtotalAmount: money("25"), totalAmount: money("25"), totalTaxAmount: null }, lines: { nodes: [] }, discountCodes: [] };
 const clientOptions = (fetchFn, extra = {}) => ({ getConfig: () => config, fetch: fetchFn, sleep: async () => {}, retries: 0, ...extra });
 
-test("configuration is explicit, validates host/version, and refuses Admin credentials", () => {
+test("configuration is explicit, validates host/version, and never sources Admin credentials", () => {
   const read = (values) => readShopifyConfig((key) => values[key]);
   assert.throws(() => read({}), /SHOPIFY_STORE_DOMAIN/);
   assert.equal(read({ SHOPIFY_STORE_DOMAIN: "mock.shop" }).domain, "mock.shop");
   assert.equal(read({ SHOPIFY_STORE_DOMAIN: "fixture", SHOPIFY_STOREFRONT_TOKEN: "public" }).domain, config.domain);
   for (const host of ["127.0.0.1", "fixture.myshopify.com/private", "fixture.myshopify.com@evil.test", "evil.test"]) assert.throws(() => read({ SHOPIFY_STORE_DOMAIN: host, SHOPIFY_STOREFRONT_TOKEN: "public" }), undefined, host);
-  assert.throws(() => read({ SHOPIFY_STORE_DOMAIN: config.domain, SHOPIFY_STOREFRONT_TOKEN: "shpat_test" }), /Admin token/);
+  assert.throws(() => read({ SHOPIFY_STORE_DOMAIN: config.domain, SHOPIFY_ADMIN_TOKEN: "shpat_admin_only_fixture" }), /Storefront token/);
+  assert.throws(() => read({ SHOPIFY_STORE_DOMAIN: config.domain, SHOPIFY_STOREFRONT_TOKEN: " ", SHOPIFY_STOREFRONT_PRIVATE_TOKEN: " " }), /Storefront token/);
   assert.throws(() => read({ SHOPIFY_STORE_DOMAIN: config.domain, SHOPIFY_STOREFRONT_TOKEN: "public", SHOPIFY_API_VERSION: "latest" }), /quarterly/);
+});
+
+test("private Storefront credentials are opaque and route only to Storefront headers", async () => {
+  const synthetic = "shpat_headless_private_fixture";
+  const configured = readShopifyConfig((name) => ({
+    SHOPIFY_STORE_DOMAIN: config.domain,
+    SHOPIFY_STOREFRONT_PRIVATE_TOKEN: ` ${synthetic} `,
+    SHOPIFY_STOREFRONT_TOKEN: "public-alternative-fixture",
+    SHOPIFY_ADMIN_TOKEN: "unrelated-admin-fixture",
+  })[name]);
+  const api = createStorefront(clientOptions(async (url, init) => {
+    assert.equal(url, `https://${config.domain}/api/2026-07/graphql.json`);
+    assert.equal(init.headers["Shopify-Storefront-Private-Token"], synthetic);
+    assert.equal(init.headers["Shopify-Storefront-Buyer-IP"], "192.0.2.1");
+    assert.equal(init.headers["X-Shopify-Storefront-Access-Token"], undefined);
+    assert.equal(init.headers["X-Shopify-Access-Token"], undefined);
+    return response({ ok: true });
+  }, { getConfig: () => configured }));
+  await api({ query: "query Fixture { shop { name } }", lang: "el", buyerIp: "192.0.2.1" });
+});
+
+test("token prefixes never establish authorization or hide Shopify auth failures", async () => {
+  for (const slot of ["public", "private"]) {
+    let calls = 0;
+    const configured = readShopifyConfig((name) => ({
+      SHOPIFY_STORE_DOMAIN: config.domain,
+      [slot === "private" ? "SHOPIFY_STOREFRONT_PRIVATE_TOKEN" : "SHOPIFY_STOREFRONT_TOKEN"]: "shpat_opaque_fixture",
+    })[name]);
+    const status = slot === "private" ? 403 : 401;
+    const api = createStorefront(clientOptions(async (_url, init) => {
+      calls++;
+      assert.equal(init.headers[slot === "private" ? "Shopify-Storefront-Private-Token" : "X-Shopify-Storefront-Access-Token"], "shpat_opaque_fixture");
+      assert.equal(init.headers[slot === "private" ? "X-Shopify-Storefront-Access-Token" : "Shopify-Storefront-Private-Token"], undefined);
+      assert.equal(init.headers["Shopify-Storefront-Buyer-IP"], slot === "private" ? "192.0.2.1" : undefined);
+      assert.equal(init.headers["X-Shopify-Access-Token"], undefined);
+      return new Response("PRIVATE-RESPONSE-SENTINEL", { status });
+    }, { getConfig: () => configured, retries: 2 }));
+    await assert.rejects(api({ query: "query Fixture { shop { name } }", lang: "el", buyerIp: "192.0.2.1" }), (error) => error.status === status && error.message === `Shopify HTTP ${status}.`);
+    assert.equal(calls, 1);
+  }
 });
 
 test("private tokens, language and buyer IP stay scoped to each concurrent request", async () => {
@@ -53,7 +94,7 @@ test("explicit public mock never receives real-store tokens or buyer IP", async 
     assert.equal(init.headers["X-Shopify-Storefront-Access-Token"], undefined);
     assert.equal(init.headers["Shopify-Storefront-Buyer-IP"], undefined);
     return response({ ok: true });
-  }, { getConfig: () => ({ ...config, domain: "mock.shop", privateToken: "test-private" }) }));
+  }, { getConfig: () => ({ ...config, domain: "mock.shop", publicToken: "shpat_public_fixture", privateToken: "shpat_private_fixture" }) }));
   await api({ query: "query Fixture { shop { name } }", lang: "en", buyerIp: session.clientAddress });
 });
 
